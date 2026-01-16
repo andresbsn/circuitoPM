@@ -1,64 +1,45 @@
 version: '3.8'
 
 services:
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: padel_postgres
+    container_name: padel_db
+    restart: always
     environment:
-      POSTGRES_USER: ${DB_USER:-padel_user}
-      POSTGRES_PASSWORD: ${DB_PASS:-padel_pass}
-      POSTGRES_DB: ${DB_NAME:-padel_db}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASS:-postgres_35702}
+      POSTGRES_DB: postgres
     ports:
-      - "${DB_PORT:-5432}:5432"
-    networks:
-      - padel-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-padel_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./full_backup.sql:/docker-entrypoint-initdb.d/init.sql
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: padel_backend
-    environment:
-      NODE_ENV: production
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-padel_user}
-      DB_PASS: ${DB_PASS:-padel_pass}
-      DB_NAME: ${DB_NAME:-padel_db}
-      JWT_SECRET: ${JWT_SECRET}
-      PORT: 3000
+    restart: always
     ports:
       - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASS=${DB_PASS:-postgres_35702}
+      - DB_NAME=postgres
+      - PORT=3000
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-super_secret_key_change_me}
     depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - padel-network
-    restart: unless-stopped
+      - db
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    build: ./frontend
     container_name: padel_frontend
+    restart: always
     ports:
       - "80:80"
     depends_on:
       - backend
-    networks:
-      - padel-network
-    restart: unless-stopped
 
 volumes:
-  postgres-data:
-
-networks:
-  padel-network:
-    driver: bridge
+  postgres_data:
