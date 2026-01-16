@@ -1,0 +1,1196 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import api from '../../services/api'
+import Modal from '../Modal'
+import Toast from '../Toast'
+
+export default function AdminTournamentDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [tournament, setTournament] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [activeTab, setActiveTab] = useState('categories')
+  const [selectedCategory, setSelectedCategory] = useState(null)
+  const [registrations, setRegistrations] = useState([])
+  const [zones, setZones] = useState([])
+  const [zoneMatches, setZoneMatches] = useState([])
+  const [playoffs, setPlayoffs] = useState(null)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [showZoneModal, setShowZoneModal] = useState(false)
+  const [showManualZoneModal, setShowManualZoneModal] = useState(false)
+  const [showResultModal, setShowResultModal] = useState(false)
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [zoneMode, setZoneMode] = useState('auto')
+  const [manualZones, setManualZones] = useState([])
+  const [availableRegistrations, setAvailableRegistrations] = useState([])
+  const [editingMatch, setEditingMatch] = useState(null)
+  const [scheduleMatch, setScheduleMatch] = useState(null)
+  const [scheduleData, setScheduleData] = useState({ scheduled_at: '', venue: '' })
+  const [scoreInput, setScoreInput] = useState({ sets: [{ home: '', away: '' }] })
+  const [availableTeams, setAvailableTeams] = useState([])
+  const [venues, setVenues] = useState([])
+  const [selectedTeam, setSelectedTeam] = useState('')
+  const [toast, setToast] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetchTournament()
+    fetchCategories()
+  }, [id])
+
+  useEffect(() => {
+    if (selectedCategory) {
+      fetchCategoryData()
+    }
+  }, [selectedCategory, activeTab])
+
+  const fetchTournament = async () => {
+    try {
+      const response = await api.get(`/api/tournaments/${id}`)
+      if (response.data.ok) {
+        setTournament(response.data.data)
+        if (response.data.data.categories?.length > 0) {
+          setSelectedCategory(response.data.data.categories[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching tournament:', error)
+    }
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const response = await api.get('/api/categories')
+      if (response.data.ok) {
+        setCategories(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+    }
+  }
+
+  const fetchCategoryData = async () => {
+    try {
+      if (activeTab === 'registrations') {
+        const response = await api.get(`/api/admin/registrations?tournamentId=${id}&categoryId=${selectedCategory}`)
+        if (response.data.ok) setRegistrations(response.data.data)
+      } else if (activeTab === 'zones') {
+        const response = await api.get(`/api/tournament-categories/zones?tournament_category_id=${selectedCategory}`)
+        if (response.data.ok) setZones(response.data.data)
+      } else if (activeTab === 'matches') {
+        const response = await api.get(`/api/tournament-categories/zone-matches?tournament_category_id=${selectedCategory}`)
+        if (response.data.ok) setZoneMatches(response.data.data)
+      } else if (activeTab === 'playoffs') {
+        const response = await api.get(`/api/tournament-categories/playoffs?tournament_category_id=${selectedCategory}`)
+        if (response.data.ok) setPlayoffs(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching category data:', error)
+    }
+  }
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+
+    const formData = new FormData(e.target)
+    const data = {
+      tournament_id: id,
+      category_id: formData.get('category_id'),
+      cupo: formData.get('cupo') || null,
+      inscripcion_abierta: formData.get('inscripcion_abierta') === 'true',
+      match_format: formData.get('match_format'),
+      super_tiebreak_points: parseInt(formData.get('super_tiebreak_points')),
+      win_points: parseInt(formData.get('win_points')),
+      loss_points: parseInt(formData.get('loss_points'))
+    }
+
+    try {
+      const response = await api.post('/api/admin/tournament-categories', data)
+      if (response.data.ok) {
+        setToast({ message: 'Categoría agregada', type: 'success' })
+        setShowCategoryModal(false)
+        fetchTournament()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGenerateZones = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+
+    if (!selectedCategory) {
+      setToast({ message: 'Debe seleccionar una categoría primero', type: 'error' })
+      setLoading(false)
+      return
+    }
+
+    const formData = new FormData(e.target)
+    const zoneSizeValue = formData.get('zone_size')
+    const qualifiersValue = formData.get('qualifiers_per_zone')
+    
+    const zoneSize = parseInt(zoneSizeValue)
+    const qualifiersPerZone = parseInt(qualifiersValue)
+    const categoryId = parseInt(selectedCategory)
+
+    if (isNaN(categoryId) || isNaN(zoneSize) || isNaN(qualifiersPerZone)) {
+      setToast({ message: 'Todos los campos deben ser números válidos', type: 'error' })
+      setLoading(false)
+      return
+    }
+
+    // Si es modo manual, abrir modal de asignación manual
+    if (zoneMode === 'manual') {
+      try {
+        // Obtener inscripciones confirmadas
+        const response = await api.get(`/api/admin/registrations?tournamentId=${id}&categoryId=${selectedCategory}`)
+        if (response.data.ok) {
+          const confirmedRegs = response.data.data.filter(r => r.estado === 'confirmado' || r.estado === 'inscripto')
+          setAvailableRegistrations(confirmedRegs)
+          
+          // Calcular número de zonas
+          const numZones = Math.ceil(confirmedRegs.length / zoneSize)
+          
+          // Inicializar zonas vacías
+          const zones = []
+          for (let i = 0; i < numZones; i++) {
+            zones.push({
+              name: String.fromCharCode(65 + i), // A, B, C, etc.
+              teams: []
+            })
+          }
+          
+          setManualZones(zones)
+          setShowZoneModal(false)
+          setShowManualZoneModal(true)
+        }
+      } catch (error) {
+        setToast({ message: 'Error al cargar inscripciones', type: 'error' })
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // Modo automático
+    const data = {
+      tournament_category_id: categoryId,
+      zone_size: zoneSize,
+      qualifiers_per_zone: qualifiersPerZone
+    }
+
+    try {
+      const response = await api.post('/api/admin/zones/generate', data)
+      if (response.data.ok) {
+        setToast({ message: 'Zonas generadas exitosamente', type: 'success' })
+        setShowZoneModal(false)
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGeneratePlayoffs = async () => {
+    if (!confirm('¿Generar playoffs con los clasificados actuales?')) return
+    setLoading(true)
+
+    try {
+      const response = await api.post('/api/admin/playoffs/generate', {
+        tournament_category_id: selectedCategory
+      })
+      if (response.data.ok) {
+        setToast({ message: 'Playoffs generados exitosamente', type: 'success' })
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAssignTeamToZone = (registration, zoneIndex) => {
+    const newZones = [...manualZones]
+    const newAvailable = availableRegistrations.filter(r => r.id !== registration.id)
+    
+    // Agregar equipo a la zona
+    newZones[zoneIndex].teams.push(registration)
+    
+    setManualZones(newZones)
+    setAvailableRegistrations(newAvailable)
+  }
+
+  const handleRemoveTeamFromZone = (registration, zoneIndex) => {
+    const newZones = [...manualZones]
+    
+    // Remover equipo de la zona
+    newZones[zoneIndex].teams = newZones[zoneIndex].teams.filter(t => t.id !== registration.id)
+    
+    // Agregar de vuelta a disponibles
+    setAvailableRegistrations([...availableRegistrations, registration])
+    setManualZones(newZones)
+  }
+
+  const handleConfirmManualZones = async () => {
+    // Validar que todas las parejas estén asignadas
+    if (availableRegistrations.length > 0) {
+      setToast({ message: 'Debe asignar todas las parejas a las zonas', type: 'error' })
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      // Preparar datos para enviar al backend
+      const zonesData = manualZones.map((zone, index) => ({
+        name: zone.name,
+        order_index: index,
+        teams: zone.teams.map(reg => reg.team_id)
+      }))
+
+      const response = await api.post('/api/admin/zones/generate-manual', {
+        tournament_category_id: parseInt(selectedCategory),
+        zones: zonesData
+      })
+
+      if (response.data.ok) {
+        setToast({ message: 'Zonas creadas exitosamente', type: 'success' })
+        setShowManualZoneModal(false)
+        setManualZones([])
+        setAvailableRegistrations([])
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error al crear zonas', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openRegistrationModal = async () => {
+    try {
+      const response = await api.get('/api/admin/teams?estado=activa')
+      if (response.data.ok) {
+        setAvailableTeams(response.data.data)
+        setShowRegistrationModal(true)
+      }
+    } catch (error) {
+      setToast({ message: 'Error al cargar parejas', type: 'error' })
+    }
+  }
+
+  const handleCreateRegistration = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const response = await api.post('/api/admin/registrations', {
+        tournament_category_id: parseInt(selectedCategory),
+        team_id: parseInt(selectedTeam)
+      })
+      if (response.data.ok) {
+        setToast({ message: 'Inscripción creada exitosamente', type: 'success' })
+        setShowRegistrationModal(false)
+        setSelectedTeam('')
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error al inscribir pareja', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelRegistration = async (registrationId) => {
+    if (!confirm('¿Está seguro de cancelar esta inscripción?')) return
+    setLoading(true)
+
+    try {
+      const response = await api.patch(`/api/admin/registrations/${registrationId}/cancel`)
+      if (response.data.ok) {
+        setToast({ message: 'Inscripción cancelada', type: 'success' })
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteRegistration = async (registrationId) => {
+    if (!confirm('¿Está seguro de eliminar esta inscripción? Esta acción no se puede deshacer.')) return
+    setLoading(true)
+
+    try {
+      await api.delete(`/api/admin/registrations/${registrationId}`)
+      setToast({ message: 'Inscripción eliminada', type: 'success' })
+      fetchCategoryData()
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAssignPoints = async () => {
+    if (!confirm('¿Está seguro de finalizar el torneo y asignar puntos? Esta acción no se puede deshacer.')) return
+    setLoading(true)
+
+    try {
+      const response = await api.post('/api/admin/points/assign', {
+        tournament_category_id: parseInt(selectedCategory)
+      })
+      if (response.data.ok) {
+        setToast({ 
+          message: `Puntos asignados exitosamente. ${response.data.data.pointsAssigned} puntos asignados a ${response.data.data.teamsProcessed} equipos.`, 
+          type: 'success' 
+        })
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error al asignar puntos', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openScheduleModal = async (match, isZone = true) => {
+    try {
+      const response = await api.get('/api/admin/venues?active=true')
+      if (response.data.ok) {
+        setVenues(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error loading venues:', error)
+    }
+
+    setScheduleMatch({ ...match, isZone })
+    setScheduleData({
+      scheduled_at: match.scheduled_at ? new Date(match.scheduled_at).toISOString().slice(0, 16) : '',
+      venue: match.venue || ''
+    })
+    setShowScheduleModal(true)
+  }
+
+  const handleScheduleMatch = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const endpoint = scheduleMatch.isZone 
+        ? `/api/admin/zone-matches/${scheduleMatch.id}/schedule`
+        : `/api/admin/matches/${scheduleMatch.id}/schedule`
+      
+      const response = await api.patch(endpoint, scheduleData)
+      if (response.data.ok) {
+        setToast({ message: 'Partido programado exitosamente', type: 'success' })
+        setShowScheduleModal(false)
+        setScheduleMatch(null)
+        setScheduleData({ scheduled_at: '', venue: '' })
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error al programar partido', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdateResult = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+
+    const score_json = {
+      format: editingMatch.format,
+      sets: scoreInput.sets.map(set => ({
+        home: parseInt(set.home),
+        away: parseInt(set.away),
+        type: set.type || undefined
+      }))
+    }
+
+    try {
+      const endpoint = editingMatch.isZone 
+        ? `/api/admin/zone-matches/${editingMatch.id}/result`
+        : `/api/admin/matches/${editingMatch.id}/result`
+      
+      const response = await api.patch(endpoint, { score_json })
+      if (response.data.ok) {
+        setToast({ message: 'Resultado actualizado', type: 'success' })
+        setShowResultModal(false)
+        setEditingMatch(null)
+        setScoreInput({ sets: [{ home: '', away: '' }] })
+        fetchCategoryData()
+      }
+    } catch (error) {
+      setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openResultModal = (match, isZone = false, format = 'BEST_OF_3_SUPER_TB') => {
+    setEditingMatch({ ...match, isZone, format })
+    setScoreInput({ sets: [{ home: '', away: '' }, { home: '', away: '' }] })
+    setShowResultModal(true)
+  }
+
+  const addSet = () => {
+    setScoreInput({ sets: [...scoreInput.sets, { home: '', away: '' }] })
+  }
+
+  if (!tournament) {
+    return <div>Cargando...</div>
+  }
+
+  return (
+    <div>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      <div className="mb-6">
+        <button onClick={() => navigate('/admin')} className="text-primary-600 hover:text-primary-700 mb-4">
+          ← Volver a Torneos
+        </button>
+        <h2 className="text-2xl font-bold text-gray-900">{tournament.nombre}</h2>
+      </div>
+
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            {['categories', 'registrations', 'zones', 'matches', 'playoffs'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`${
+                  activeTab === tab
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize`}
+              >
+                {tab === 'categories' ? 'Categorías' : tab === 'registrations' ? 'Inscripciones' : tab === 'zones' ? 'Zonas' : tab === 'matches' ? 'Partidos' : 'Playoffs'}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      {activeTab !== 'categories' && tournament.categories?.length > 0 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Categoría</label>
+          <select
+            value={selectedCategory || ''}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+          >
+            {tournament.categories?.map(tc => (
+              <option key={tc.id} value={tc.id}>{tc.category.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {activeTab === 'categories' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Categorías del Torneo</h3>
+            <button
+              onClick={() => setShowCategoryModal(true)}
+              className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+            >
+              Agregar Categoría
+            </button>
+          </div>
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            {/* Desktop View - Table */}
+            <div className="hidden md:block">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cupo</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscripción</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Formato</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {tournament.categories?.map(tc => (
+                    <tr key={tc.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{tc.category.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tc.cupo || 'Sin límite'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded ${tc.inscripcion_abierta ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {tc.inscripcion_abierta ? 'Abierta' : 'Cerrada'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tc.match_format}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View - Cards */}
+            <div className="md:hidden">
+              <ul className="divide-y divide-gray-200">
+                {tournament.categories?.map(tc => (
+                  <li key={tc.id} className="p-4">
+                    <div className="flex justify-between items-center mb-2">
+                       <span className="text-sm font-bold text-gray-900">{tc.category.name}</span>
+                       <span className={`px-2 py-1 text-xs rounded ${tc.inscripcion_abierta ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {tc.inscripcion_abierta ? 'Abierta' : 'Cerrada'}
+                        </span>
+                    </div>
+                    <div className="text-xs text-gray-600 space-y-1">
+                      <p>Cupo: {tc.cupo || 'Sin límite'}</p>
+                      <p>Formato: {tc.match_format}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'registrations' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Inscripciones</h3>
+            <button
+              onClick={openRegistrationModal}
+              className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+            >
+              Inscribir Pareja
+            </button>
+          </div>
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            {/* Desktop View - Table */}
+            <div className="hidden md:block">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pareja</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categorías Base</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {registrations.map(reg => (
+                    <tr key={reg.id}>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {reg.team.player1.nombre} {reg.team.player1.apellido} / {reg.team.player2.nombre} {reg.team.player2.apellido}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {reg.team.player1.categoriaBase.name} / {reg.team.player2.categoriaBase.name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          reg.estado === 'confirmado' ? 'bg-green-100 text-green-800' :
+                          reg.estado === 'inscripto' ? 'bg-primary-100 text-primary-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {reg.estado}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {reg.estado !== 'cancelado' && (
+                          <>
+                            <button
+                              onClick={() => handleCancelRegistration(reg.id)}
+                              className="text-yellow-600 hover:text-yellow-900 mr-3"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRegistration(reg.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Eliminar
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View - Cards */}
+            <div className="md:hidden">
+              <ul className="divide-y divide-gray-200">
+                {registrations.map(reg => (
+                  <li key={reg.id} className="p-4">
+                     <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1">
+                           <p className="text-sm font-semibold text-gray-900">
+                             {reg.team.player1.nombre} {reg.team.player1.apellido}
+                           </p>
+                           <p className="text-sm font-semibold text-gray-900">
+                             {reg.team.player2.nombre} {reg.team.player2.apellido}
+                           </p>
+                           <p className="text-xs text-gray-500 mt-1">
+                             Cats: {reg.team.player1.categoriaBase.name} / {reg.team.player2.categoriaBase.name}
+                           </p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          reg.estado === 'confirmado' ? 'bg-green-100 text-green-800' :
+                          reg.estado === 'inscripto' ? 'bg-primary-100 text-primary-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {reg.estado}
+                        </span>
+                     </div>
+                     
+                     {reg.estado !== 'cancelado' && (
+                        <div className="flex justify-end gap-3 mt-3 pt-2 border-t border-gray-100">
+                            <button
+                              onClick={() => handleCancelRegistration(reg.id)}
+                              className="text-sm font-medium text-yellow-600 hover:text-yellow-900"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRegistration(reg.id)}
+                              className="text-sm font-medium text-red-600 hover:text-red-900"
+                            >
+                              Eliminar
+                            </button>
+                        </div>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'zones' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Zonas</h3>
+            <button
+              onClick={() => setShowZoneModal(true)}
+              className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+            >
+              Generar Zonas
+            </button>
+          </div>
+          {zones.length === 0 ? (
+            <p className="text-gray-500">No hay zonas generadas</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {zones.map(zone => (
+                <div key={zone.id} className="bg-white rounded-lg shadow p-6">
+                  <h4 className="text-md font-semibold text-gray-900 mb-3">{zone.name}</h4>
+                  <div className="space-y-2">
+                    {zone.zoneTeams?.map(zt => (
+                      <div key={zt.id} className="text-sm text-gray-700">
+                        {zt.team.player1.nombre} {zt.team.player1.apellido} / {zt.team.player2.nombre} {zt.team.player2.apellido}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'matches' && (
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Partidos de Zona</h3>
+          {zoneMatches.length === 0 ? (
+            <p className="text-gray-500">No hay partidos</p>
+          ) : (
+            <div className="space-y-4">
+              {zoneMatches.map(match => (
+                <div key={match.id} className="bg-white rounded-lg shadow p-6">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="mb-2">
+                        <span className="text-xs text-gray-500">Zona {match.zone.name} - Ronda {match.round_number}</span>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {match.teamHome.player1.nombre} {match.teamHome.player1.apellido} / {match.teamHome.player2.nombre} {match.teamHome.player2.apellido}
+                      </p>
+                      <p className="text-sm text-gray-500 my-1">vs</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {match.teamAway.player1.nombre} {match.teamAway.player1.apellido} / {match.teamAway.player2.nombre} {match.teamAway.player2.apellido}
+                      </p>
+                      {(match.scheduled_at || match.venue) && (
+                        <div className="mt-3 text-xs text-gray-600 space-y-1">
+                          {match.scheduled_at && (
+                            <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
+                              dateStyle: 'short', 
+                              timeStyle: 'short' 
+                            })}</div>
+                          )}
+                          {match.venue && <div>📍 {match.venue}</div>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right space-y-2">
+                      {match.status === 'played' ? (
+                        <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => openScheduleModal(match)}
+                            className="block w-full text-sm bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700 mb-2"
+                          >
+                            Programar
+                          </button>
+                          <button
+                            onClick={() => openResultModal(match, true)}
+                            className="block w-full text-sm bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700"
+                          >
+                            Cargar Resultado
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'playoffs' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Playoffs</h3>
+            <div className="flex gap-2">
+              {!playoffs ? (
+                <button
+                  onClick={handleGeneratePlayoffs}
+                  disabled={loading}
+                  className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {loading ? 'Generando...' : 'Generar Playoffs'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleAssignPoints}
+                  disabled={loading}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+                >
+                  {loading ? 'Asignando...' : 'Finalizar y Asignar Puntos'}
+                </button>
+              )}
+            </div>
+          </div>
+          {!playoffs ? (
+            <p className="text-gray-500">No hay playoffs generados</p>
+          ) : (
+            <div className="space-y-4">
+              {playoffs.matches?.map(match => (
+                <div key={match.id} className="bg-white rounded-lg shadow p-6">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="mb-2">
+                        <span className="text-sm font-semibold text-gray-700">{match.round_name}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-900">
+                          {match.teamHome 
+                            ? `${match.teamHome.player1.nombre} ${match.teamHome.player1.apellido} / ${match.teamHome.player2.nombre} ${match.teamHome.player2.apellido}` 
+                            : match.home_source_zone_id 
+                              ? <span className="italic text-gray-500">{match.home_source_position}° Zona {match.homeSourceZone?.name || '?'}</span>
+                              : 'TBD'
+                          }
+                        </p>
+                        <p className="text-sm text-gray-500">vs</p>
+                        <p className="text-sm text-gray-900">
+                          {match.teamAway 
+                            ? `${match.teamAway.player1.nombre} ${match.teamAway.player1.apellido} / ${match.teamAway.player2.nombre} ${match.teamAway.player2.apellido}` 
+                            : match.away_source_zone_id 
+                              ? <span className="italic text-gray-500">{match.away_source_position}° Zona {match.awaySourceZone?.name || '?'}</span>
+                              : 'TBD'
+                          }
+                        </p>
+                      </div>
+                      {(match.scheduled_at || match.venue) && (
+                        <div className="mt-3 text-xs text-gray-600 space-y-1">
+                          {match.scheduled_at && (
+                            <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
+                              dateStyle: 'short', 
+                              timeStyle: 'short' 
+                            })}</div>
+                          )}
+                          {match.venue && <div>📍 {match.venue}</div>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right space-y-2">
+                      {match.status === 'played' ? (
+                        <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
+                      ) : match.team_home_id && match.team_away_id ? (
+                        <>
+                          <button
+                            onClick={() => openScheduleModal(match, false)}
+                            className="block w-full text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 mb-2"
+                          >
+                            Programar
+                          </button>
+                          <button
+                            onClick={() => openResultModal(match, false)}
+                            className="block w-full text-sm bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700"
+                          >
+                            Cargar Resultado
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400">Esperando equipos</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Modal isOpen={showCategoryModal} onClose={() => setShowCategoryModal(false)} title="Agregar Categoría">
+        <form onSubmit={handleAddCategory} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Categoría</label>
+            <select name="category_id" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
+              <option value="">Selecciona una categoría</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Cupo (opcional)</label>
+            <input name="cupo" type="number" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Inscripción Abierta</label>
+            <select name="inscripcion_abierta" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
+              <option value="true">Sí</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Formato de Partido</label>
+            <select name="match_format" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
+              <option value="BEST_OF_3_SUPER_TB">Best of 3 + Super TB</option>
+              <option value="BEST_OF_3_FULL">Best of 3 Full</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Puntos TB</label>
+              <input name="super_tiebreak_points" type="number" defaultValue="10" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Puntos Victoria</label>
+              <input name="win_points" type="number" defaultValue="2" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Puntos Derrota</label>
+            <input name="loss_points" type="number" defaultValue="0" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+          </div>
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setShowCategoryModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+              {loading ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showZoneModal} onClose={() => setShowZoneModal(false)} title="Generar Zonas">
+        <form onSubmit={handleGenerateZones} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Modo de Generación</label>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="zone_mode"
+                  value="auto"
+                  checked={zoneMode === 'auto'}
+                  onChange={(e) => setZoneMode(e.target.value)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Automático (distribución aleatoria)</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="zone_mode"
+                  value="manual"
+                  checked={zoneMode === 'manual'}
+                  onChange={(e) => setZoneMode(e.target.value)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Manual (asignar parejas manualmente)</span>
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Tamaño de Zona</label>
+            <input name="zone_size" type="number" min="2" defaultValue="4" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Clasificados por Zona</label>
+            <input name="qualifiers_per_zone" type="number" min="1" defaultValue="2" required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" />
+          </div>
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setShowZoneModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+              {loading ? 'Generando...' : zoneMode === 'manual' ? 'Continuar' : 'Generar'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showResultModal} onClose={() => setShowResultModal(false)} title="Cargar Resultado">
+        <form onSubmit={handleUpdateResult} className="space-y-4">
+          {scoreInput.sets.map((set, idx) => (
+            <div key={idx} className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Set {idx + 1} - Local</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={set.home}
+                  onChange={(e) => {
+                    const newSets = [...scoreInput.sets]
+                    newSets[idx].home = e.target.value
+                    setScoreInput({ sets: newSets })
+                  }}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Set {idx + 1} - Visitante</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={set.away}
+                  onChange={(e) => {
+                    const newSets = [...scoreInput.sets]
+                    newSets[idx].away = e.target.value
+                    setScoreInput({ sets: newSets })
+                  }}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+            </div>
+          ))}
+          {scoreInput.sets.length < 3 && (
+            <button
+              type="button"
+              onClick={addSet}
+              className="text-sm text-primary-600 hover:text-primary-700"
+            >
+              + Agregar Set
+            </button>
+          )}
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setShowResultModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+              {loading ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showRegistrationModal} onClose={() => setShowRegistrationModal(false)} title="Inscribir Pareja">
+        <form onSubmit={handleCreateRegistration} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Seleccionar Pareja</label>
+            <select
+              value={selectedTeam}
+              onChange={(e) => setSelectedTeam(e.target.value)}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">Seleccione una pareja</option>
+              {availableTeams.map(team => (
+                <option key={team.id} value={team.id}>
+                  {team.player1.nombre} {team.player1.apellido} / {team.player2.nombre} {team.player2.apellido} ({team.player1.categoriaBase.name} / {team.player2.categoriaBase.name})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setShowRegistrationModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+              {loading ? 'Inscribiendo...' : 'Inscribir'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} title="Programar Partido">
+        <form onSubmit={handleScheduleMatch} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Fecha y Hora</label>
+            <input
+              type="datetime-local"
+              value={scheduleData.scheduled_at}
+              onChange={(e) => setScheduleData({ ...scheduleData, scheduled_at: e.target.value })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Complejo</label>
+            <select
+              value={scheduleData.venue}
+              onChange={(e) => setScheduleData({ ...scheduleData, venue: e.target.value })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">Seleccione un complejo</option>
+              {venues.map(venue => (
+                <option key={venue.id} value={venue.name}>
+                  {venue.name} ({venue.courts_count} canchas)
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Puede agregar más complejos desde el menú "Complejos"
+            </p>
+          </div>
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setShowScheduleModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+              {loading ? 'Guardando...' : 'Programar'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showManualZoneModal} onClose={() => setShowManualZoneModal(false)} title="Asignación Manual de Zonas" size="large">
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+            <p className="text-sm text-blue-800">
+              <strong>Instrucciones:</strong> Asigne cada pareja a una zona haciendo clic en el botón "Agregar a Zona". 
+              Todas las parejas deben estar asignadas antes de confirmar.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Parejas disponibles */}
+            <div>
+              <h4 className="font-semibold text-gray-900 mb-3">
+                Parejas Disponibles ({availableRegistrations.length})
+              </h4>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {availableRegistrations.map(reg => (
+                  <div key={reg.id} className="bg-white border border-gray-300 rounded p-3">
+                    <div className="text-sm font-medium text-gray-900">
+                      {reg.team.player1.nombre} {reg.team.player1.apellido} / {reg.team.player2.nombre} {reg.team.player2.apellido}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {reg.team.player1.categoriaBase.name} / {reg.team.player2.categoriaBase.name}
+                    </div>
+                    <div className="mt-2 flex gap-1">
+                      {manualZones.map((zone, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleAssignTeamToZone(reg, idx)}
+                          className="text-xs bg-primary-600 text-white px-2 py-1 rounded hover:bg-primary-700"
+                        >
+                          → Zona {zone.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {availableRegistrations.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Todas las parejas han sido asignadas
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Zonas */}
+            <div>
+              <h4 className="font-semibold text-gray-900 mb-3">Zonas</h4>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {manualZones.map((zone, zoneIdx) => (
+                  <div key={zoneIdx} className="bg-gray-50 border border-gray-300 rounded p-3">
+                    <div className="font-semibold text-gray-900 mb-2">
+                      Zona {zone.name} ({zone.teams.length} parejas)
+                    </div>
+                    <div className="space-y-1">
+                      {zone.teams.map(reg => (
+                        <div key={reg.id} className="bg-white border border-gray-200 rounded p-2 flex justify-between items-center">
+                          <div className="text-xs">
+                            {reg.team.player1.nombre} {reg.team.player1.apellido} / {reg.team.player2.nombre} {reg.team.player2.apellido}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTeamFromZone(reg, zoneIdx)}
+                            className="text-xs text-red-600 hover:text-red-800"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      {zone.teams.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Sin parejas asignadas</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+            <button 
+              type="button" 
+              onClick={() => setShowManualZoneModal(false)} 
+              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="button"
+              onClick={handleConfirmManualZones}
+              disabled={loading || availableRegistrations.length > 0}
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+            >
+              {loading ? 'Creando...' : 'Confirmar y Generar Partidos'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
