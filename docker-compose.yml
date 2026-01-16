@@ -13,7 +13,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./full_backup.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./padel_circuit_backup.sql:/docker-entrypoint-initdb.d/init.sql
 
   backend:
     build: ./backend

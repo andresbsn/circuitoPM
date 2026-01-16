@@ -17,14 +17,14 @@ Debes subir los siguientes archivos y carpetas a tu VPS:
 - `backend/` (código fuente del backend)
 - `frontend/` (código fuente del frontend)
 - `docker-compose.yml`
-- `full_backup.sql` (Base de datos completa)
+- `padel_circuit_backup.sql` (Base de datos del esquema padel_circuit)
 
 Puedes usar `scp` o FileZilla para transferirlos.
 
 ## 3. Configuración
 
 El archivo `docker-compose.yml` ya está configurado para:
-- Crear una base de datos PostgreSQL e importar automáticamente tu backup (`full_backup.sql`).
+- Crear una base de datos PostgreSQL e importar automáticamente tu backup (`padel_circuit_backup.sql`).
 - Levantar el backend en el puerto 3000.
 - Compilar y servir el frontend en el puerto 80 (HTTP estándar).
 
@@ -52,4 +52,4 @@ sudo docker-compose logs -f
 
 ## Notas Importantes
 - La base de datos persistirá su información en un volumen de Docker llamado `postgres_data`.
-- El backup `full_backup.sql` solo se importa la **primera vez** que se crea el contenedor de la base de datos. Si necesitas re-importarlo, debes borrar el volumen: `sudo docker volume rm circuito_pm_postgres_data`.
+- El backup `padel_circuit_backup.sql` solo se importa la **primera vez** que se crea el contenedor de la base de datos. Si necesitas re-importarlo, debes borrar el volumen: `sudo docker volume rm circuito_pm_postgres_data`.
