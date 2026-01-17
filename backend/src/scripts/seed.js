@@ -24,7 +24,7 @@ async function seed() {
     }
     console.log('Categories seeded successfully.');
 
-    const adminPassword = await bcrypt.hash('admin123', 10);
+    const adminPassword = await bcrypt.hash('circPM_2026.', 10);
     const [adminUser, created] = await User.findOrCreate({
       where: { dni: 'admin' },
       defaults: {
