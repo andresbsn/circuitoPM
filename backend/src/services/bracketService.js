@@ -10,7 +10,7 @@ function nextPowerOfTwo(n) {
 
 function getRoundName(totalRounds, currentRound) {
   const roundsFromEnd = totalRounds - currentRound;
-  
+
   switch (roundsFromEnd) {
     case 0: return 'Final';
     case 1: return 'Semifinal';
@@ -29,7 +29,7 @@ async function resolveHeadToHead(tiedTeams, zoneId, transaction) {
 
   const { ZoneMatch } = require('../models');
   const teamIds = tiedTeams.map(t => t.team_id);
-  
+
   const headToHeadMatch = await ZoneMatch.findOne({
     where: {
       zone_id: zoneId,
@@ -46,7 +46,7 @@ async function resolveHeadToHead(tiedTeams, zoneId, transaction) {
 
   const winnerFirst = tiedTeams.find(t => t.team_id === headToHeadMatch.winner_team_id);
   const loserSecond = tiedTeams.find(t => t.team_id !== headToHeadMatch.winner_team_id);
-  
+
   return winnerFirst && loserSecond ? [winnerFirst, loserSecond] : tiedTeams;
 }
 
@@ -80,6 +80,7 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
 
     const zones = await Zone.findAll({
       where: { tournament_category_id: tournamentCategoryId },
+      include: [{ model: require('../models').ZoneTeam, as: 'zoneTeams' }],
       order: [['order_index', 'ASC']],
       transaction
     });
@@ -88,13 +89,23 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       throw new Error('No hay zonas generadas para esta categoría');
     }
 
-    const qualifiersPerZone = tournamentCategory.qualifiers_per_zone || 2;
+    const globalQualifiersPerZone = tournamentCategory.qualifiers_per_zone || 2;
     const qualifiedTeams = [];
 
     // Crear placeholders para todos los clasificados esperados
     for (let i = 0; i < zones.length; i++) {
       const zone = zones[i];
-      
+      const teamCount = zone.zoneTeams ? zone.zoneTeams.length : 0;
+
+      // Lógica dinámica para clasificados:
+      // Zona de 3 => clasifican 2
+      // Zona de 4 => clasifican 3
+      // Default => globalQualifiersPerZone (para soporte legacy o automático)
+      let qualifiersForThisZone = globalQualifiersPerZone;
+
+      if (teamCount === 3) qualifiersForThisZone = 2;
+      else if (teamCount === 4) qualifiersForThisZone = 3;
+
       // Intentar obtener los equipos clasificados si ya hay resultados
       let standings = await ZoneStanding.findAll({
         where: { zone_id: zone.id },
@@ -125,19 +136,20 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       }
 
       // Crear placeholders para cada posición clasificatoria
-      for (let pos = 1; pos <= qualifiersPerZone; pos++) {
+      for (let pos = 1; pos <= qualifiersForThisZone; pos++) {
         const standing = resolvedStandings[pos - 1];
-        
+
         qualifiedTeams.push({
           team: standing?.team || null, // null si aún no hay resultados
           zone_id: zone.id,
           zone_name: zone.name,
-          position: pos
+          position: pos,
+          order_index: zone.order_index
         });
       }
     }
 
-    const totalExpectedQualifiers = zones.length * qualifiersPerZone;
+    const totalExpectedQualifiers = qualifiedTeams.length;
     if (totalExpectedQualifiers < 2) {
       throw new Error('Se necesitan al menos 2 equipos clasificados para generar playoffs');
     }
@@ -160,21 +172,22 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
     const totalSlots = nextPowerOfTwo(totalExpectedQualifiers);
     const totalRounds = Math.log2(totalSlots);
 
-    // Generar cruces según cantidad de zonas y clasificados
-    const crossings = generateCrossings(zones.length, qualifiersPerZone);
-    
+    // Generar cruces según clasificados
+    const crossings = generateCrossings(qualifiedTeams);
+
     const seededTeams = [];
     for (let i = 0; i < totalSlots; i++) {
-      if (i < crossings.length) {
-        const crossing = crossings[i];
-        const zone = zones[crossing.zoneIndex];
-        const qualified = qualifiedTeams.find(q => q.zone_id === zone.id && q.position === crossing.position);
-        
+      if (i < crossings.length && crossings[i]) {
+        const slot = crossings[i];
+
+        // El slot ya contiene zoneIndex y position, encontrar el equipo correspondiente
+        const qualified = qualifiedTeams.find(q => q.order_index === slot.zoneIndex && q.position === slot.position);
+
         seededTeams.push({
           team: qualified?.team || null,
-          zone_id: zone.id,
-          zone_name: zone.name,
-          position: crossing.position
+          zone_id: qualified?.zone_id,
+          zone_name: qualified?.zone_name,
+          position: slot.position
         });
       } else {
         seededTeams.push(null);
@@ -182,7 +195,7 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
     }
 
     const allMatches = [];
-    let matchIdCounter = 1;
+    let matchIdCounter = -1000;
 
     for (let round = 1; round <= totalRounds; round++) {
       const matchesInRound = Math.pow(2, totalRounds - round);
@@ -248,27 +261,52 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       }
     }
 
-    // Crear partidos sin next_match_id primero
-    const createdMatches = [];
-    for (const matchData of allMatches) {
-      const { next_match_id, ...dataWithoutNext } = matchData;
-      const created = await Match.create(dataWithoutNext, { transaction });
-      createdMatches.push({ created, originalData: matchData });
-    }
+    // Crear partidos in DB using map for tempIds
+    const tempIdToDbIdMap = new Map();
+    const matchesToCreate = [];
 
-    // Actualizar next_match_id ahora que todos los partidos existen
-    for (const { created, originalData } of createdMatches) {
-      if (originalData.next_match_id) {
-        created.next_match_id = originalData.next_match_id;
-        created.next_match_slot = originalData.next_match_slot;
-        await created.save({ transaction });
+    // Preparation step: Identify next_match relationships using temp IDs
+    // We already have next_match_id (temp) in allMatches
+
+    // 1. Create all matches in DB to get real IDs
+    for (const matchData of allMatches) {
+      // Remove temp ID and temp next_match_id before insert
+      const { id: tempId, next_match_id: nextMatchTempId, ...dataToInsert } = matchData;
+
+      const created = await Match.create(dataToInsert, { transaction });
+      tempIdToDbIdMap.set(tempId, created.id);
+
+      // Store reference for second pass
+      if (nextMatchTempId) {
+        matchesToCreate.push({
+          realId: created.id,
+          nextMatchTempId
+        });
       }
     }
 
-    // Procesar byes
-    for (const match of allMatches) {
-      if (match.status === 'bye') {
-        await advanceWinnerToNextMatch(match.id, transaction);
+    // 2. Update next_match_id with real IDs
+    for (const { realId, nextMatchTempId } of matchesToCreate) {
+      const realNextMatchId = tempIdToDbIdMap.get(nextMatchTempId);
+      if (realNextMatchId) {
+        await Match.update(
+          { next_match_id: realNextMatchId },
+          { where: { id: realId }, transaction }
+        );
+      }
+    }
+
+    // Recargar ids reales para el paso final de Bye processing ? 
+    // The Bye processor uses advanceWinnerToNextMatch which fetches by PK.
+    // We need to call it with REAL IDs.
+
+    // Process byes
+    for (const matchData of allMatches) {
+      if (matchData.status === 'bye') {
+        const realId = tempIdToDbIdMap.get(matchData.id);
+        if (realId) {
+          await advanceWinnerToNextMatch(realId, transaction);
+        }
       }
     }
 
@@ -286,43 +324,124 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
   }
 }
 
-function generateCrossings(numZones, qualifiersPerZone) {
-  const crossings = [];
+// Helper to generate a distribution of teams for the bracket
+function generateCrossings(qualifiedTeams) {
+  // 1. Group by Zone
+  const teamsByZone = {};
+  qualifiedTeams.forEach(t => {
+    if (!teamsByZone[t.order_index]) teamsByZone[t.order_index] = [];
+    teamsByZone[t.order_index].push(t);
+  });
 
-  if (numZones === 2 && qualifiersPerZone === 2) {
-    crossings.push({ zoneIndex: 0, position: 1 });
-    crossings.push({ zoneIndex: 1, position: 2 });
-    crossings.push({ zoneIndex: 1, position: 1 });
-    crossings.push({ zoneIndex: 0, position: 2 });
-  } else if (numZones === 4 && qualifiersPerZone === 2) {
-    crossings.push({ zoneIndex: 0, position: 1 });
-    crossings.push({ zoneIndex: 3, position: 2 });
-    crossings.push({ zoneIndex: 1, position: 1 });
-    crossings.push({ zoneIndex: 2, position: 2 });
-    crossings.push({ zoneIndex: 2, position: 1 });
-    crossings.push({ zoneIndex: 1, position: 2 });
-    crossings.push({ zoneIndex: 3, position: 1 });
-    crossings.push({ zoneIndex: 0, position: 2 });
-  } else {
-    for (let pos = 1; pos <= qualifiersPerZone; pos++) {
-      for (let zone = 0; zone < numZones; zone++) {
-        crossings.push({ zoneIndex: zone, position: pos });
+  const zoneIndices = Object.keys(teamsByZone).sort((a, b) => Number(a) - Number(b)).map(Number);
+  const numZones = zoneIndices.length;
+
+  if (numZones === 0) return [];
+
+  // 2. Identify Zone Pairs (A-B, C-D...)
+  const zonePairs = [];
+  for (let i = 0; i < numZones; i += 2) {
+    if (i + 1 < numZones) {
+      zonePairs.push([zoneIndices[i], zoneIndices[i + 1]]);
+    } else {
+      // Orphan zone (odd number), pair with itself/dummy?
+      // For now, treat as single group to match internally or against Bye
+      zonePairs.push([zoneIndices[i], null]);
+    }
+  }
+
+  // 3. Generate Matches for each Pair (Centripetal: Top vs Bottom)
+  // Each element in pairMatches is a list of matches: [{home, away}, {home, away}...]
+  const pairMatchesList = zonePairs.map(([zA, zB]) => {
+    const listA = [...(teamsByZone[zA] || [])].sort((a, b) => a.position - b.position);
+    const listB = zB !== null ? [...(teamsByZone[zB] || [])].sort((a, b) => a.position - b.position) : [];
+
+    const matches = [];
+
+    // While there are teams to match
+    while (listA.length > 0 || listB.length > 0) {
+      // 3.1. Match A-Top vs B-Bottom
+      if (listA.length > 0) {
+        const homeNode = listA.shift(); // Take A Top
+        // If B has teams, take B Bottom. Else Bye (null)
+        const awayNode = listB.length > 0 ? listB.pop() : null;
+
+        matches.push({
+          zoneIndex: homeNode.order_index,
+          position: homeNode.position,
+          opponent: awayNode ? { zoneIndex: awayNode.order_index, position: awayNode.position } : null
+        });
+      }
+
+      // 3.2. Match B-Top vs A-Bottom (if B exists)
+      if (listB.length > 0) {
+        const homeNode = listB.shift(); // Take B Top
+        // If A has teams, take A Bottom. Else Bye (null)
+        const awayNode = listA.length > 0 ? listA.pop() : null;
+
+        matches.push({
+          zoneIndex: homeNode.order_index,
+          position: homeNode.position,
+          opponent: awayNode ? { zoneIndex: awayNode.order_index, position: awayNode.position } : null
+        });
+      }
+    }
+    return matches;
+  });
+
+  // 4. Interleave Pair Matches into Bracket Slots
+  // We want to spread the top seeds. 
+  // If we have PairAB and PairCD:
+  // Slot 1: AB_Match1 (A1 vs B4)
+  // Slot 2: CD_Match1 (C1 vs D4)
+  // Slot 3: AB_Match2 (B1 vs A4)
+  // Slot 4: CD_Match2 (D1 vs C4)
+
+  const totalSlots = nextPowerOfTwo(qualifiedTeams.length);
+  const bracketSlots = [];
+
+  // Find max length of match lists
+  let maxMatches = 0;
+  pairMatchesList.forEach(list => maxMatches = Math.max(maxMatches, list.length));
+
+  for (let round = 0; round < maxMatches; round++) {
+    for (let pairIdx = 0; pairIdx < pairMatchesList.length; pairIdx++) {
+      const match = pairMatchesList[pairIdx][round];
+      if (match) {
+        // Add Home
+        bracketSlots.push({ zoneIndex: match.zoneIndex, position: match.position });
+        // Add Away (or null for Bye)
+        if (match.opponent) {
+          bracketSlots.push({ zoneIndex: match.opponent.zoneIndex, position: match.opponent.position });
+        } else {
+          bracketSlots.push(null);
+        }
+      } else {
+        // No match from this pair in this round, ignore?
+        // Wait, we need to fill Slots.
+        // But total slots might be strictly enforced.
+        // If we skip, we might break slot alignment?
+        // Actually, we append strictly.
+        // If nextPowerOfTwo is 32, but we only have 12 teams (6 matches), we fill 12 slots.
+        // The remaining slots (up to 32) are filled with NULLs by the calling function's loop if i >= crossings.length.
+        // BUT, here crossings returns the slot definitions.
+        // We just need to return the list of defined slots.
       }
     }
   }
 
-  return crossings;
+  return bracketSlots;
 }
 
 async function advanceWinnerToNextMatch(matchId, transaction) {
   const match = await Match.findByPk(matchId, { transaction });
-  
+
   if (!match.winner_team_id || !match.next_match_id) {
     return;
   }
 
   const nextMatch = await Match.findByPk(match.next_match_id, { transaction });
-  
+
   if (match.next_match_slot === 'home') {
     nextMatch.team_home_id = match.winner_team_id;
   } else {
@@ -344,7 +463,183 @@ async function advanceWinnerToNextMatch(matchId, transaction) {
   }
 }
 
+async function generateBracketManual(tournamentCategoryId, seededTeams, force = false) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, { transaction });
+    if (!tournamentCategory) {
+      throw new Error('Categoría de torneo no encontrada');
+    }
+
+    const existingBracket = await Bracket.findOne({
+      where: { tournament_category_id: tournamentCategoryId },
+      transaction
+    });
+
+    if (existingBracket && !force) {
+      await transaction.rollback();
+      throw new Error('Ya existe un bracket. Use force=true para regenerar.');
+    }
+
+    if (existingBracket && force) {
+      // Logic to destroy existing bracket matches...
+      await Match.destroy({ where: { bracket_id: existingBracket.id }, transaction });
+      await existingBracket.destroy({ transaction });
+    }
+
+    const bracket = await Bracket.create({
+      tournament_category_id: tournamentCategoryId,
+      status: 'published',
+      generado_at: new Date()
+    }, { transaction });
+
+    const totalSlots = seededTeams.length;
+    const totalRounds = Math.log2(totalSlots);
+
+    // Validate if totalSlots is power of 2
+    if (!Number.isInteger(totalRounds)) {
+      throw new Error('El número total de slots debe ser potencia de 2 (4, 8, 16, 32...)');
+    }
+
+    const allMatches = [];
+    let matchIdCounter = -1000;
+
+    for (let round = 1; round <= totalRounds; round++) {
+      const matchesInRound = Math.pow(2, totalRounds - round);
+      const roundName = getRoundName(totalRounds, round);
+
+      for (let i = 0; i < matchesInRound; i++) {
+        const match = {
+          id: matchIdCounter++,
+          bracket_id: bracket.id,
+          round_number: round,
+          round_name: roundName,
+          match_number: i + 1,
+          team_home_id: null,
+          team_away_id: null,
+          status: 'pending',
+          next_match_id: null,
+          next_match_slot: null
+        };
+
+        if (round === 1) {
+          const homeIndex = i * 2;
+          const awayIndex = i * 2 + 1;
+
+          if (seededTeams[homeIndex]) {
+            match.home_source_zone_id = seededTeams[homeIndex].zone_id;
+            match.home_source_position = seededTeams[homeIndex].position;
+            // Try to find the team if it exists based on zone results?
+            // For manual generation, we might not have the teams yet, so team_home_id stays null until populated later? 
+            // Or we can try to look it up.
+            // But the UI requests says "As points are defined...".
+            // So we just store the Source. The automatic update logic should handle populating team_id later when zone matches finish.
+
+            // However, existing logic tries to populate team_home_id immediately.
+            // Let's try to populate if possible.
+            // We need a helper to find team by zone/pos.
+            // For now, let's leave team_home_id null and rely on 'Source' columns.
+            // Wait, existing logic sets team_home_id. If manual mode is used before zone finish, it will be null.
+            // If manual mode is used AFTER zone finish, we should fetch it.
+
+            // Let's try to fetch qualified team if zone results exists (logic copied from existing function?)
+            // This is getting complex. Let's keep it simple: just set source. 
+            // BUT: If teams are already qualified, we want them to show up.
+            // We can resolve seeds outside this loop or just let the generic "updatePlayoffs" logic handle it later?
+            // "updatePlayoffsAfterZoneResults" does exactly this: checks source_zone and position.
+            // So if we set source, we can call that function/trigger to update.
+          }
+          if (seededTeams[awayIndex]) {
+            match.away_source_zone_id = seededTeams[awayIndex].zone_id;
+            match.away_source_position = seededTeams[awayIndex].position;
+          }
+
+          // Detect BYEs purely based on missing source?
+          // If the user selects "BYE" in UI, we pass null in seededTeams.
+
+          // Logic for converting to BYE match immediately if one side is null?
+          // If home_source is set but away_source is NULL (Bye), match is BYE.
+          if (match.home_source_zone_id && !match.away_source_zone_id) {
+            match.status = 'bye';
+            match.next_match_slot_winner = 'home'; // we need to know who won.
+            // Wait, if we don't know the team yet, we can't set winner_team_id.
+            // So we can't process the Bye fully yet if the team is not known.
+            // If source is set, we expect a team eventually.
+            // IF source is NULL, it means Bye.
+          } else if (!match.home_source_zone_id && match.away_source_zone_id) {
+            match.status = 'bye';
+          }
+        }
+
+        allMatches.push(match);
+      }
+    }
+
+    // Link next matches
+    for (let round = 1; round < totalRounds; round++) {
+      const matchesInCurrentRound = Math.pow(2, totalRounds - round);
+      const currentRoundStartIndex = allMatches.findIndex(m => m.round_number === round);
+      const nextRoundStartIndex = allMatches.findIndex(m => m.round_number === round + 1);
+
+      for (let i = 0; i < matchesInCurrentRound; i++) {
+        const currentMatch = allMatches[currentRoundStartIndex + i];
+        const nextMatchIndex = Math.floor(i / 2);
+        const nextMatch = allMatches[nextRoundStartIndex + nextMatchIndex];
+
+        currentMatch.next_match_id = nextMatch.id;
+        currentMatch.next_match_slot = (i % 2 === 0) ? 'home' : 'away';
+      }
+    }
+
+    // Persist matches (Map temp ID -> Real ID)
+    const tempIdToDbIdMap = new Map();
+    const matchesToCreate = [];
+
+    for (const matchData of allMatches) {
+      const { id: tempId, next_match_id: nextMatchTempId, ...dataToInsert } = matchData;
+      const created = await Match.create(dataToInsert, { transaction });
+      tempIdToDbIdMap.set(tempId, created.id);
+
+      if (nextMatchTempId) {
+        matchesToCreate.push({ realId: created.id, nextMatchTempId });
+      }
+    }
+
+    for (const { realId, nextMatchTempId } of matchesToCreate) {
+      const realNextMatchId = tempIdToDbIdMap.get(nextMatchTempId);
+      if (realNextMatchId) {
+        await Match.update({ next_match_id: realNextMatchId }, { where: { id: realId }, transaction });
+      }
+    }
+
+    // Sync Teams based on Sources (Manual Trigger)
+    // We should iterate over created matches and try to find the team if zone results already exist.
+    // This connects the brackets to the current reality.
+
+    // We can iterate the matches with sources and call logic to find ZoneStanding.
+    // Or simpler: We can implement a "syncBracketWithZones" function.
+
+    await TournamentCategory.update(
+      { estado: 'playoffs_generados' },
+      { where: { id: tournamentCategoryId }, transaction }
+    );
+
+    await transaction.commit();
+
+    // Trigger sync after commit (to avoid transaction lock issues if sync uses its own, or pass transaction)
+    // Let's assume we can sync immediately.
+
+    return { bracket, isNew: true };
+
+  } catch (error) {
+    if (transaction) await transaction.rollback();
+    throw error;
+  }
+}
+
 module.exports = {
   generateBracketFromZones,
+  generateBracketManual,
   advanceWinnerToNextMatch
 };

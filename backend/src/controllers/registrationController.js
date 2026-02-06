@@ -7,7 +7,7 @@ const { includeTeamWithPlayers, includeTournamentCategory } = require('../utils/
 
 exports.createRegistration = async (req, res) => {
   try {
-    const { tournament_category_id, team_id } = req.body;
+    const { tournament_category_id, team_id, schedule_problems } = req.body;
     const userDni = req.user.dni;
 
     if (!tournament_category_id || !team_id) {
@@ -31,6 +31,7 @@ exports.createRegistration = async (req, res) => {
     const registration = await Registration.create({
       tournament_category_id,
       team_id,
+      schedule_problems,
       estado: REGISTRATION_STATES.INSCRIPTO
     });
 

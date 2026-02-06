@@ -27,6 +27,7 @@ export default function PlayerDashboard() {
   const [companionDni, setCompanionDni] = useState('')
   const [selectedTournamentCategory, setSelectedTournamentCategory] = useState(null)
   const [selectedTeam, setSelectedTeam] = useState(null)
+  const [scheduleProblems, setScheduleProblems] = useState('')
   const { toast, showSuccess, showError, hideToast } = useToast()
   const [loading, setLoading] = useState(false)
 
@@ -76,13 +77,15 @@ export default function PlayerDashboard() {
     try {
       const response = await api.post('/api/registrations', {
         tournament_category_id: selectedTournamentCategory.id,
-        team_id: selectedTeam
+        team_id: selectedTeam,
+        schedule_problems: scheduleProblems
       })
       if (response.data.ok) {
         showSuccess('Inscripción realizada exitosamente')
         enrollModal.close()
         setSelectedTournamentCategory(null)
         setSelectedTeam(null)
+        setScheduleProblems('')
         fetchData()
       }
     } catch (error) {
@@ -338,6 +341,19 @@ export default function PlayerDashboard() {
                   No tienes parejas activas compatibles. <button type="button" onClick={() => { enrollModal.close(); teamModal.open(); }} className="underline font-bold">Crear una nueva</button>
                </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Problemas de Horario (Opcional)
+            </label>
+            <textarea
+              rows={3}
+              value={scheduleProblems}
+              onChange={(e) => setScheduleProblems(e.target.value)}
+              className="shadow-sm focus:ring-primary-500 focus:border-primary-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
+              placeholder="Ej: No puedo jugar el sábado antes de las 14hs"
+            />
           </div>
           
           <div className="flex justify-end space-x-3 pt-2">

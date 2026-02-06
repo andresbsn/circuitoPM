@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import logo from '../assets/logo.jpeg';
+import logo from '../assets/logo_original.jpeg';
 
 export default function Layout({ children, title, navigationItems = [] }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);

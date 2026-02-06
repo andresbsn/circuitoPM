@@ -1,6 +1,6 @@
 const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProfile, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Bracket, Match, Venue, User } = require('../models');
 const bcrypt = require('bcryptjs');
-const { generateZones, recalculateStandings } = require('../services/zoneService');
+const { generateZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
 const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
 const { updatePlayoffsAfterZoneResults } = require('../services/playoffUpdateService');
 const { validateScoreFormat, calculateMatchStats } = require('../utils/validation');
@@ -140,18 +140,74 @@ exports.updateTournament = async (req, res) => {
 };
 
 exports.deleteTournament = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
 
-    const tournament = await Tournament.findByPk(id);
+    const tournament = await Tournament.findByPk(id, { transaction });
     if (!tournament) {
+      await transaction.rollback();
       return sendNotFoundError(res, 'Torneo no encontrado');
     }
 
-    await tournament.destroy();
+    // Only allow deletion if state is DRAFT
+    if (tournament.estado !== TOURNAMENT_STATES.DRAFT) {
+      await transaction.rollback();
+      return sendError(res, {
+        code: ERROR_CODES.FORBIDDEN,
+        message: 'Solo se pueden eliminar torneos en estado borrador (draft)'
+      }, 403);
+    }
 
+    // Find all tournament categories
+    const categories = await TournamentCategory.findAll({
+      where: { tournament_id: id },
+      transaction
+    });
+
+    const categoryIds = categories.map(c => c.id);
+
+    if (categoryIds.length > 0) {
+      // 1. Delete associated Registrations
+      await Registration.destroy({
+        where: { tournament_category_id: categoryIds },
+        transaction
+      });
+
+      // 2. Delete associated Zones (and their matches, teams, standings) if any
+      // Since zone deletion is complex (many relations), we manually clear relations if necessary
+      // Assuming straightforward cascade might not be set up in DB, we do best effort or rely on model cascades if set
+      // But based on error, Registrations was the blocker.
+      // Let's also clear Zones just in case
+      const zones = await Zone.findAll({ where: { tournament_category_id: categoryIds }, transaction });
+      const zoneIds = zones.map(z => z.id);
+
+      if (zoneIds.length > 0) {
+        await ZoneMatch.destroy({ where: { zone_id: zoneIds }, transaction });
+        await ZoneStanding.destroy({ where: { zone_id: zoneIds }, transaction });
+        await ZoneTeam.destroy({ where: { zone_id: zoneIds }, transaction });
+        await Zone.destroy({ where: { id: zoneIds }, transaction });
+      }
+
+      // 3. Delete Brackets/Matches (Playoffs)
+      // Similar approach if needed, or assume they don't exist in Draft.
+      // But if user moved state back and forth, they might exist.
+      // For now, let's stick to fixing the immediate "registration" error, which implies Registrations exist.
+
+      // 4. Delete TournamentCategories
+      await TournamentCategory.destroy({
+        where: { tournament_id: id },
+        transaction
+      });
+    }
+
+    // 5. Finally delete the Tournament
+    await tournament.destroy({ transaction });
+
+    await transaction.commit();
     return sendSuccess(res, { message: 'Torneo eliminado' });
   } catch (error) {
+    await transaction.rollback();
     console.error('Delete tournament error:', error);
     return sendError(res, {
       code: ERROR_CODES.SERVER_ERROR,
@@ -256,10 +312,12 @@ exports.updateTournamentCategory = async (req, res) => {
 
 exports.getRegistrations = async (req, res) => {
   try {
-    const { tournamentId, categoryId } = req.query;
+    const { tournamentId, categoryId, tournamentCategoryId } = req.query;
 
     const where = {};
-    if (tournamentId && categoryId) {
+    if (tournamentCategoryId) {
+      where.tournament_category_id = tournamentCategoryId;
+    } else if (tournamentId && categoryId) {
       const tournamentCategory = await TournamentCategory.findOne({
         where: { tournament_id: tournamentId, category_id: categoryId }
       });
@@ -589,29 +647,139 @@ exports.generateZonesManual = async (req, res) => {
           }, { transaction: t });
         }
 
-        // Generar partidos round-robin para esta zona
-        const teams = zoneData.teams;
-        let matchNumber = 1;
+        // Generar partidos
+        const teams = [...zoneData.teams]; // Copia para manipular en RR sin afectar original si se necesitara
 
-        for (let round = 1; round <= teams.length - 1; round++) {
-          for (let i = 0; i < teams.length / 2; i++) {
-            const home = teams[i];
-            const away = teams[teams.length - 1 - i];
+        if (teams.length === 4) {
+          // Lógica especial para zona de 4:
+          // P1: 1 vs 4
+          // P2: 2 vs 3
+          // P3: Ganador P1 vs Ganador P2
+          // P4: Perdedor P1 vs Perdedor P2
 
-            if (home && away) {
-              await ZoneMatch.create({
-                zone_id: zone.id,
-                round_number: round,
-                match_number: matchNumber++,
-                team_home_id: home,
-                team_away_id: away,
-                status: 'pending'
-              }, { transaction: t });
-            }
+          // Match 1: Pos 1 (index 0) vs Pos 4 (index 3)
+          const match1 = await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 1,
+            match_number: 1,
+            team_home_id: teams[0],
+            team_away_id: teams[3],
+            status: 'pending'
+          }, { transaction: t });
+
+          // Match 2: Pos 2 (index 1) vs Pos 3 (index 2)
+          const match2 = await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 1,
+            match_number: 2,
+            team_home_id: teams[1],
+            team_away_id: teams[2],
+            status: 'pending'
+          }, { transaction: t });
+
+          // Match 3: Ganadores
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 2,
+            match_number: 3,
+            team_home_id: null,
+            team_away_id: null,
+            parent_match_home_id: match1.id,
+            parent_condition_home: 'winner',
+            parent_match_away_id: match2.id,
+            parent_condition_away: 'winner',
+            status: 'pending'
+          }, { transaction: t });
+
+          // Match 4: Perdedores
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 2,
+            match_number: 4,
+            team_home_id: null,
+            team_away_id: null,
+            parent_match_home_id: match1.id,
+            parent_condition_home: 'loser',
+            parent_match_away_id: match2.id,
+            parent_condition_away: 'loser',
+            status: 'pending'
+          }, { transaction: t });
+
+        } else if (teams.length === 3) {
+          // Lógica especial para zona de 3:
+          // P1: 1 vs 2
+          // P2: 2 vs 3
+          // P3: 3 vs 1
+
+          // Match 1: 1 vs 2
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 1,
+            match_number: 1,
+            team_home_id: teams[0],
+            team_away_id: teams[1],
+            status: 'pending'
+          }, { transaction: t });
+
+          // Match 2: 2 vs 3
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 2,
+            match_number: 2,
+            team_home_id: teams[1],
+            team_away_id: teams[2],
+            status: 'pending'
+          }, { transaction: t });
+
+          // Match 3: 3 vs 1
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: 3,
+            match_number: 3,
+            team_home_id: teams[2],
+            team_away_id: teams[0],
+            status: 'pending'
+          }, { transaction: t });
+
+        } else {
+          // Standard Round Robin para otros tamaños
+          let matchNumber = 1;
+          const rrTeams = [...teams]; // Use a copy for rotation
+
+          // Fix for loop condition/logic which was slightly off in previous snippet for generic N
+          // Standard RR algorithm (Circle Method)
+          // If odd number of teams, add dummy
+          if (rrTeams.length % 2 !== 0) {
+            rrTeams.push(null); // Bye
           }
 
-          // Rotar equipos (excepto el primero)
-          teams.splice(1, 0, teams.pop());
+          const totalRounds = rrTeams.length - 1;
+          const matchesPerRound = rrTeams.length / 2;
+
+          for (let round = 1; round <= totalRounds; round++) {
+            for (let i = 0; i < matchesPerRound; i++) {
+              const home = rrTeams[i];
+              const away = rrTeams[rrTeams.length - 1 - i];
+
+              if (home && away) {
+                await ZoneMatch.create({
+                  zone_id: zone.id,
+                  round_number: round,
+                  match_number: matchNumber++,
+                  team_home_id: home,
+                  team_away_id: away,
+                  status: 'pending'
+                }, { transaction: t });
+              }
+            }
+
+            // Rotar equipos (excepto el primero)
+            // [0, 1, 2, 3] -> [0, 3, 1, 2]
+            const fixed = rrTeams[0];
+            const rotated = rrTeams.slice(1);
+            rotated.unshift(rotated.pop());
+            rrTeams.splice(0, rrTeams.length, fixed, ...rotated);
+          }
         }
       }
     });
@@ -762,7 +930,10 @@ exports.updateZoneMatchResult = async (req, res) => {
       match.played_at = new Date();
       await match.save({ transaction });
 
-      await recalculateStandings(match.zone_id, tournamentCategory.id);
+      await recalculateStandings(match.zone_id, tournamentCategory.id, transaction);
+
+      // Update dependent matches (e.g. for 4-team zones)
+      await updateDependentMatches(match.id, transaction);
 
       // Actualizar playoffs automáticamente si existen
       await updatePlayoffsAfterZoneResults(match.zone_id, transaction);
@@ -811,6 +982,63 @@ exports.generatePlayoffs = async (req, res) => {
     return sendSuccess(res, { bracket: result, isNew }, isNew ? 201 : 200);
   } catch (error) {
     console.error('Generate playoffs error:', error);
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: error.message,
+      details: error.message
+    });
+  }
+};
+
+exports.generatePlayoffsManual = async (req, res) => {
+  try {
+    const { tournament_category_id, total_slots, matches, force } = req.body;
+
+    if (!tournament_category_id || !total_slots || !matches) {
+      return sendValidationError(res, 'Faltan datos requeridos');
+    }
+
+    // Convert keys 'matches' (e.g. { matchNumber: 1, home: {...}, away: {...} }) 
+    // to flat seededTeams array
+    const seededTeams = new Array(total_slots).fill(null);
+
+    matches.forEach(m => {
+      // Inputs: m.match_number is 1-based (i.e. Match 1, Match 2...)
+      // But we just need to place them in order.
+      // Index for seededTeams:
+      // Match 1 Home: 0
+      // Match 1 Away: 1
+      // Match 2 Home: 2
+      // Match 2 Away: 3
+      // ...
+      const idx = (m.match_number - 1) * 2;
+
+      if (m.home) {
+        seededTeams[idx] = {
+          zone_id: m.home.zone_id,
+          position: m.home.position
+        };
+      }
+      if (m.away) {
+        seededTeams[idx + 1] = {
+          zone_id: m.away.zone_id,
+          position: m.away.position
+        };
+      }
+    });
+
+    // Call service that accepts seededTeams directly
+    const { generateBracketManual } = require('../services/bracketService'); // ensure import
+    const { bracket, isNew } = await generateBracketManual(tournament_category_id, seededTeams, force || false);
+
+    const result = await Bracket.findByPk(bracket.id, {
+      include: [{ model: Match, as: 'matches', include: includeMatchTeams() }]
+    });
+
+    return sendSuccess(res, { bracket: result, isNew }, isNew ? 201 : 200);
+
+  } catch (error) {
+    console.error('Manual playoffs error:', error);
     return sendError(res, {
       code: ERROR_CODES.SERVER_ERROR,
       message: error.message,

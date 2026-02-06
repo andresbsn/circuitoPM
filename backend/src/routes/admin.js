@@ -47,6 +47,7 @@ router.patch('/zone-matches/:id/schedule', adminController.scheduleZoneMatch);
 router.patch('/zone-matches/:id/result', adminController.updateZoneMatchResult);
 
 router.post('/playoffs/generate', adminController.generatePlayoffs);
+router.post('/playoffs/generate-manual', adminController.generatePlayoffsManual);
 router.post('/playoffs/reset', adminController.resetPlayoffs);
 router.patch('/matches/:id/result', adminController.updateMatchResult);
 router.patch('/matches/:id/schedule', adminController.updateMatchSchedule);

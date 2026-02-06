@@ -21,11 +21,27 @@ const ZoneMatch = sequelize.define('ZoneMatch', {
   },
   team_home_id: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: true
   },
   team_away_id: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: true
+  },
+  parent_match_home_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  parent_match_away_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  parent_condition_home: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
+  parent_condition_away: {
+    type: DataTypes.STRING(20),
+    allowNull: true
   },
   status: {
     type: DataTypes.ENUM('pending', 'played'),

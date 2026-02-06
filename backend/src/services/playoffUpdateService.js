@@ -1,13 +1,34 @@
-const { sequelize, Match, Zone, ZoneStanding, TournamentCategory, Bracket } = require('../models');
+const { sequelize, Match, Zone, ZoneStanding, TournamentCategory, Bracket, ZoneMatch } = require('../models');
+const { Op } = require('sequelize');
 
 async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
   try {
-    // Obtener la zona y su categoría de torneo
-    const zone = await Zone.findByPk(zoneId, { 
-      include: [{ model: TournamentCategory, as: 'tournamentCategory' }],
-      transaction 
+    // 1. Verificar si la zona ha finalizado TODOS sus partidos
+    // Si quedan partidos pendientes, NO actualizamos los playoffs para evitar cruces prematuros.
+    const totalZoneMatches = await ZoneMatch.count({
+      where: { zone_id: zoneId },
+      transaction
     });
-    
+
+    const playedZoneMatches = await ZoneMatch.count({
+      where: {
+        zone_id: zoneId,
+        status: 'played'
+      },
+      transaction
+    });
+
+    if (totalZoneMatches === 0 || playedZoneMatches < totalZoneMatches) {
+      // Zona no finalizada. No hacemos nada.
+      return;
+    }
+
+    // Obtener la zona y su categoría de torneo
+    const zone = await Zone.findByPk(zoneId, {
+      include: [{ model: TournamentCategory, as: 'tournamentCategory' }],
+      transaction
+    });
+
     if (!zone) {
       return;
     }
@@ -44,7 +65,7 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
       where: {
         bracket_id: bracket.id,
         round_number: 1, // Solo primera ronda
-        [sequelize.Op.or]: [
+        [Op.or]: [
           { home_source_zone_id: zoneId },
           { away_source_zone_id: zoneId }
         ]
@@ -75,7 +96,28 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
       }
 
       if (updated) {
-        await match.save({ transaction });
+        // Chequear si esto transforma el partido en un BYE
+        // Un partido es BYE si tiene un equipo asignado Y el rival no tiene source (es un bye explícito)
+        // Y todavía no está marcado como bye.
+
+        // Caso 1: Se llenó Home, Away es null y no tiene source
+        if (match.team_home_id && !match.team_away_id && !match.away_source_zone_id && match.status !== 'bye') {
+          match.status = 'bye';
+          match.winner_team_id = match.team_home_id;
+          await match.save({ transaction });
+          const { advanceWinnerToNextMatch } = require('./bracketService');
+          await advanceWinnerToNextMatch(match.id, transaction);
+        }
+        // Caso 2: Se llenó Away, Home es null y no tiene source
+        else if (match.team_away_id && !match.team_home_id && !match.home_source_zone_id && match.status !== 'bye') {
+          match.status = 'bye';
+          match.winner_team_id = match.team_away_id;
+          await match.save({ transaction });
+          const { advanceWinnerToNextMatch } = require('./bracketService');
+          await advanceWinnerToNextMatch(match.id, transaction);
+        } else {
+          await match.save({ transaction });
+        }
       }
     }
 

@@ -5,8 +5,17 @@ const { includeTournamentWithCategories } = require('../utils/queryHelpers');
 
 exports.getTournaments = async (req, res) => {
   try {
+    const { public: isPublic } = req.query;
+
+    const where = {};
+    if (isPublic === 'true') {
+      where.estado = [TOURNAMENT_STATES.EN_CURSO, TOURNAMENT_STATES.FINALIZADO];
+    } else {
+      where.estado = [TOURNAMENT_STATES.INSCRIPCION, TOURNAMENT_STATES.EN_CURSO, TOURNAMENT_STATES.FINALIZADO];
+    }
+
     const tournaments = await Tournament.findAll({
-      where: { estado: [TOURNAMENT_STATES.INSCRIPCION, TOURNAMENT_STATES.EN_CURSO, TOURNAMENT_STATES.FINALIZADO] },
+      where,
       include: [
         {
           model: TournamentCategory,

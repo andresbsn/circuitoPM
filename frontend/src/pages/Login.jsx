@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Toast from '../components/Toast'
 import fapLogo from '../assets/fap.jpg'
-import logo from '../assets/logo.jpeg'
+import logo from '../assets/logo_original.jpeg'
 
 export default function Login() {
   const [dni, setDni] = useState('')

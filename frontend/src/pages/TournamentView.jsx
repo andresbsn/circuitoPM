@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
+import { useAuth } from '../context/AuthContext'
+
 export default function TournamentView() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [tournament, setTournament] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [activeTab, setActiveTab] = useState('zones')
@@ -43,9 +46,6 @@ export default function TournamentView() {
   const fetchCategoryData = async () => {
     try {
       if (activeTab === 'zones') {
-        const response = await api.get(`/api/tournament-categories/zones?tournament_category_id=${selectedCategory}`)
-        if (response.data.ok) setZones(response.data.data)
-      } else if (activeTab === 'standings') {
         const response = await api.get(`/api/tournament-categories/standings?tournament_category_id=${selectedCategory}`)
         if (response.data.ok) setStandings(response.data.data)
       } else if (activeTab === 'matches') {
@@ -67,6 +67,14 @@ export default function TournamentView() {
     ).join(' ')
   }
 
+  const handleBack = () => {
+    if (user) {
+      navigate(user.role === 'admin' ? '/admin' : '/dashboard')
+    } else {
+      navigate('/')
+    }
+  }
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Cargando...</div>
   }
@@ -81,7 +89,7 @@ export default function TournamentView() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <button onClick={() => navigate('/dashboard')} className="text-primary-600 hover:text-primary-700 mr-4">
+              <button onClick={handleBack} className="text-primary-600 hover:text-primary-700 mr-4">
                 ← Volver
               </button>
               <h1 className="text-xl font-bold text-gray-900">{tournament.nombre}</h1>
@@ -107,7 +115,7 @@ export default function TournamentView() {
         <div className="mb-6">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
-              {['zones', 'standings', 'matches', 'playoffs'].map(tab => (
+              {['zones', 'matches', 'playoffs'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -117,7 +125,7 @@ export default function TournamentView() {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize`}
                 >
-                  {tab === 'zones' ? 'Zonas' : tab === 'standings' ? 'Tabla' : tab === 'matches' ? 'Partidos' : 'Playoffs'}
+                  {tab === 'zones' ? 'Zonas' : tab === 'matches' ? 'Partidos' : 'Playoffs'}
                 </button>
               ))}
             </nav>
@@ -126,31 +134,8 @@ export default function TournamentView() {
 
         {activeTab === 'zones' && (
           <div className="space-y-6">
-            {zones.length === 0 ? (
-              <p className="text-gray-500">No hay zonas generadas aún</p>
-            ) : (
-              zones.map(zone => (
-                <div key={zone.id} className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{zone.name}</h3>
-                  <div className="space-y-2">
-                    {zone.zoneTeams?.map(zt => (
-                      <div key={zt.id} className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm">
-                          {zt.team.player1.nombre} {zt.team.player1.apellido} / {zt.team.player2.nombre} {zt.team.player2.apellido}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {activeTab === 'standings' && (
-          <div className="space-y-6">
             {standings.length === 0 ? (
-              <p className="text-gray-500">No hay tabla de posiciones aún</p>
+              <p className="text-gray-500">No hay zonas/tabla de posiciones aún</p>
             ) : (
               standings.map(zone => (
                 <div key={zone.id} className="bg-white rounded-lg shadow overflow-hidden">
@@ -196,35 +181,78 @@ export default function TournamentView() {
         )}
 
         {activeTab === 'matches' && (
-          <div className="space-y-4">
+          <div className="space-y-8">
             {zoneMatches.length === 0 ? (
               <p className="text-gray-500">No hay partidos programados</p>
             ) : (
-              zoneMatches.map(match => (
-                <div key={match.id} className="bg-white rounded-lg shadow p-6">
-                  <div className="flex justify-between items-center">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
-                        {match.teamHome.player1.nombre} {match.teamHome.player1.apellido} / {match.teamHome.player2.nombre} {match.teamHome.player2.apellido}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">vs</p>
-                      <p className="text-sm font-medium text-gray-900 mt-1">
-                        {match.teamAway.player1.nombre} {match.teamAway.player1.apellido} / {match.teamAway.player2.nombre} {match.teamAway.player2.apellido}
-                      </p>
+                Object.entries(
+                  zoneMatches.reduce((acc, match) => {
+                    const zoneName = match.zone?.name || 'Otras';
+                    if (!acc[zoneName]) acc[zoneName] = [];
+                    acc[zoneName].push(match);
+                    return acc;
+                  }, {})
+                ).sort().map(([zoneName, matches]) => (
+                  <div key={zoneName} className="bg-white rounded-lg shadow overflow-hidden">
+                    <div className="px-6 py-3 bg-gray-100 border-b">
+                      <h3 className="text-md font-bold text-gray-800">Zona {zoneName}</h3>
                     </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-1 text-xs rounded ${match.status === 'played' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {match.status === 'played' ? 'Jugado' : 'Pendiente'}
-                      </span>
-                      {match.status === 'played' && (
-                        <p className="text-sm font-semibold text-gray-900 mt-2">
-                          {formatScore(match.score_json)}
-                        </p>
-                      )}
+                    <div className="divide-y divide-gray-200">
+                      {matches.map(match => (
+                        <div key={match.id} className="p-6 hover:bg-gray-50 transition-colors">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                            {/* Fecha y Lugar */}
+                            <div className="md:col-span-1 text-sm text-gray-500 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span>📅</span>
+                                {match.scheduled_at ? (
+                                  <span>{new Date(match.scheduled_at).toLocaleString('es-AR', {
+                                    weekday: 'short',
+                                    day: 'numeric',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}</span>
+                                ) : (
+                                  <span className="italic">A confirmar</span>
+                                )}
+                              </div>
+                              {match.venue && (
+                                <div className="flex items-center gap-2">
+                                  <span>📍</span>
+                                  <span>{match.venue}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Equipos y Resultado */}
+                            <div className="md:col-span-2 flex justify-between items-center">
+                              <div className="flex-1">
+                                <p className={`text-sm font-medium ${match.winner_team_id === match.team_home_id ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
+                                  {match.teamHome.player1.nombre} {match.teamHome.player1.apellido} / {match.teamHome.player2.nombre} {match.teamHome.player2.apellido}
+                                </p>
+                                <p className="text-xs text-gray-400 my-1">vs</p>
+                                <p className={`text-sm font-medium ${match.winner_team_id === match.team_away_id ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
+                                  {match.teamAway.player1.nombre} {match.teamAway.player1.apellido} / {match.teamAway.player2.nombre} {match.teamAway.player2.apellido}
+                                </p>
+                              </div>
+                              <div className="text-right ml-4">
+                                <span className={`inline-block px-2 py-1 text-xs rounded mb-2 ${match.status === 'played' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                  {match.status === 'played' ? 'Jugado' : 'Pendiente'}
+                                </span>
+                                {match.status === 'played' && (
+                                  <p className="text-lg font-bold text-gray-900">
+                                    {formatScore(match.score_json)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </div>
         )}

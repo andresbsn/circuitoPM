@@ -7,7 +7,7 @@ import { tabStyles } from '../utils/styles'
 import { useAuth } from '../context/AuthContext'
 
 import fapLogo from '../assets/fap.jpg'
-import logo from '../assets/logo.jpeg'
+import logo from '../assets/logo_original.jpeg'
 import Layout from '../components/Layout'
 
 export default function PublicDashboard() {
@@ -48,7 +48,7 @@ export default function PublicDashboard() {
   const fetchTournaments = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/api/tournaments')
+      const response = await api.get('/api/tournaments?public=true')
       if (response.data.ok) {
         setTournaments(response.data.data)
       }

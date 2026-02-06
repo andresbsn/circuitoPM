@@ -18,6 +18,10 @@ const Registration = sequelize.define('Registration', {
   estado: {
     type: DataTypes.ENUM('inscripto', 'baja', 'confirmado'),
     defaultValue: 'inscripto'
+  },
+  schedule_problems: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'registrations',

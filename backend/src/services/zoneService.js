@@ -24,13 +24,14 @@ function shuffleArray(array, seed) {
 function generateRoundRobinFixture(teams) {
   const n = teams.length;
   const fixtures = [];
-  
+
   if (n < 2) return fixtures;
 
   const teamsCopy = [...teams];
-  
+
+  // If odd number of teams, add a dummy team for bye
   if (n % 2 === 1) {
-    teamsCopy.push(null);
+    teamsCopy.push(null); // 'null' represents a bye
   }
 
   const totalTeams = teamsCopy.length;
@@ -39,21 +40,27 @@ function generateRoundRobinFixture(teams) {
 
   for (let round = 0; round < rounds; round++) {
     const roundMatches = [];
-    
+
     for (let match = 0; match < matchesPerRound; match++) {
       const home = teamsCopy[match];
       const away = teamsCopy[totalTeams - 1 - match];
-      
+
+      // Only add match if neither team is the dummy (bye)
       if (home !== null && away !== null) {
         roundMatches.push({ home, away });
       }
     }
-    
-    fixtures.push(roundMatches);
-    
+
+    if (roundMatches.length > 0) {
+      fixtures.push(roundMatches);
+    }
+
+    // Rotate teams: Keep the first team fixed, rotate the rest
+    // [0, 1, 2, 3] -> [0, 3, 1, 2] -> [0, 2, 3, 1]
     const fixed = teamsCopy[0];
     const rotated = teamsCopy.slice(1);
-    rotated.push(rotated.shift());
+    const last = rotated.pop();
+    rotated.unshift(last);
     teamsCopy.splice(0, teamsCopy.length, fixed, ...rotated);
   }
 
@@ -159,25 +166,82 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
       const zoneTeams = await ZoneTeam.findAll({
         where: { zone_id: zone.id },
         include: [{ model: Team, as: 'team' }],
+        order: [['order_index', 'ASC']], // Important for deterministic pairing
         transaction
       });
 
       const teamsInZone = zoneTeams.map(zt => zt.team);
-      const fixtures = generateRoundRobinFixture(teamsInZone);
 
-      let matchNumber = 1;
-      for (let roundIndex = 0; roundIndex < fixtures.length; roundIndex++) {
-        const round = fixtures[roundIndex];
-        
-        for (const match of round) {
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: roundIndex + 1,
-            match_number: matchNumber++,
-            team_home_id: match.home.id,
-            team_away_id: match.away.id,
-            status: 'pending'
-          }, { transaction });
+      // Special logic for 4 teams
+      if (teamsInZone.length === 4) {
+        // Round 1
+        // Match 1: Pos 1 (index 0) vs Pos 4 (index 3)
+        const match1 = await ZoneMatch.create({
+          zone_id: zone.id,
+          round_number: 1,
+          match_number: 1,
+          team_home_id: teamsInZone[0].id,
+          team_away_id: teamsInZone[3].id,
+          status: 'pending'
+        }, { transaction });
+
+        // Match 2: Pos 2 (index 1) vs Pos 3 (index 2)
+        const match2 = await ZoneMatch.create({
+          zone_id: zone.id,
+          round_number: 1,
+          match_number: 2,
+          team_home_id: teamsInZone[1].id,
+          team_away_id: teamsInZone[2].id,
+          status: 'pending'
+        }, { transaction });
+
+        // Round 2
+        // Match 3: Winner M1 vs Winner M2
+        await ZoneMatch.create({
+          zone_id: zone.id,
+          round_number: 2,
+          match_number: 3,
+          team_home_id: null,
+          team_away_id: null,
+          parent_match_home_id: match1.id,
+          parent_condition_home: 'winner',
+          parent_match_away_id: match2.id,
+          parent_condition_away: 'winner',
+          status: 'pending'
+        }, { transaction });
+
+        // Match 4: Loser M1 vs Loser M2
+        await ZoneMatch.create({
+          zone_id: zone.id,
+          round_number: 2,
+          match_number: 4,
+          team_home_id: null,
+          team_away_id: null,
+          parent_match_home_id: match1.id,
+          parent_condition_home: 'loser',
+          parent_match_away_id: match2.id,
+          parent_condition_away: 'loser',
+          status: 'pending'
+        }, { transaction });
+
+      } else {
+        // Standard Round Robin for other sizes
+        const fixtures = generateRoundRobinFixture(teamsInZone);
+
+        let matchNumber = 1;
+        for (let roundIndex = 0; roundIndex < fixtures.length; roundIndex++) {
+          const round = fixtures[roundIndex];
+
+          for (const match of round) {
+            await ZoneMatch.create({
+              zone_id: zone.id,
+              round_number: roundIndex + 1,
+              match_number: matchNumber++,
+              team_home_id: match.home.id,
+              team_away_id: match.away.id,
+              status: 'pending'
+            }, { transaction });
+          }
         }
       }
 
@@ -200,8 +264,8 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
     }
 
     await TournamentCategory.update(
-      { 
-        zone_size: zoneSize, 
+      {
+        zone_size: zoneSize,
         qualifiers_per_zone: qualifiersPerZone,
         estado: 'zonas_generadas'
       },
@@ -217,22 +281,23 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
   }
 }
 
-async function recalculateStandings(zoneId, tournamentCategoryId) {
-  const transaction = await sequelize.transaction();
+async function recalculateStandings(zoneId, tournamentCategoryId, transaction = null) {
+  const t = transaction || await sequelize.transaction();
+  const isLocalTransaction = !transaction;
 
   try {
-    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId);
+    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, { transaction: t });
     const winPoints = tournamentCategory.win_points || 2;
     const lossPoints = tournamentCategory.loss_points || 0;
 
     const matches = await ZoneMatch.findAll({
       where: { zone_id: zoneId, status: 'played' },
-      transaction
+      transaction: t
     });
 
     const standings = await ZoneStanding.findAll({
       where: { zone_id: zoneId },
-      transaction
+      transaction: t
     });
 
     for (const standing of standings) {
@@ -303,17 +368,74 @@ async function recalculateStandings(zoneId, tournamentCategoryId) {
     for (const standing of standings) {
       standing.sets_diff = standing.sets_for - standing.sets_against;
       standing.games_diff = standing.games_for - standing.games_against;
-      await standing.save({ transaction });
+      await standing.save({ transaction: t });
     }
 
-    await transaction.commit();
+    if (isLocalTransaction) await t.commit();
   } catch (error) {
-    await transaction.rollback();
+    if (isLocalTransaction) await t.rollback();
+    throw error;
+  }
+}
+
+async function updateDependentMatches(matchId, transaction) {
+  const t = transaction;
+
+  try {
+    const match = await ZoneMatch.findByPk(matchId, { transaction: t });
+    if (!match || match.status !== 'played' || !match.winner_team_id) {
+      return;
+    }
+
+    const loser_team_id = match.winner_team_id === match.team_home_id ? match.team_away_id : match.team_home_id;
+
+    // Find dependent matches where this match is the parent for home or away
+    const dependentMatches = await ZoneMatch.findAll({
+      where: {
+        [require('sequelize').Op.or]: [
+          { parent_match_home_id: matchId },
+          { parent_match_away_id: matchId }
+        ]
+      },
+      transaction: t
+    });
+
+    for (const dependentMatch of dependentMatches) {
+      let updated = false;
+
+      // Update Home Team if dependent
+      if (dependentMatch.parent_match_home_id === matchId) {
+        if (dependentMatch.parent_condition_home === 'winner') {
+          dependentMatch.team_home_id = match.winner_team_id;
+        } else if (dependentMatch.parent_condition_home === 'loser') {
+          dependentMatch.team_home_id = loser_team_id;
+        }
+        updated = true;
+      }
+
+      // Update Away Team if dependent
+      if (dependentMatch.parent_match_away_id === matchId) {
+        if (dependentMatch.parent_condition_away === 'winner') {
+          dependentMatch.team_away_id = match.winner_team_id;
+        } else if (dependentMatch.parent_condition_away === 'loser') {
+          dependentMatch.team_away_id = loser_team_id;
+        }
+        updated = true;
+      }
+
+      if (updated) {
+        await dependentMatch.save({ transaction: t });
+      }
+    }
+
+  } catch (error) {
+    console.error('Error updating dependent matches:', error);
     throw error;
   }
 }
 
 module.exports = {
   generateZones,
-  recalculateStandings
+  recalculateStandings,
+  updateDependentMatches
 };

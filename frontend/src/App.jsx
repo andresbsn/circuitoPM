@@ -44,11 +44,7 @@ function AppRoutes() {
         </PrivateRoute>
       } />
 
-      <Route path="/tournaments/:id" element={
-        <PrivateRoute>
-          <TournamentView />
-        </PrivateRoute>
-      } />
+      <Route path="/tournaments/:id" element={<TournamentView />} />
 
       <Route path="/admin/*" element={
         <PrivateRoute adminOnly>
