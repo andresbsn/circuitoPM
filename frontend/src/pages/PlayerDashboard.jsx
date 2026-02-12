@@ -28,6 +28,8 @@ export default function PlayerDashboard() {
   const [selectedTournamentCategory, setSelectedTournamentCategory] = useState(null)
   const [selectedTeam, setSelectedTeam] = useState(null)
   const [scheduleProblems, setScheduleProblems] = useState('')
+  const [editingRegistration, setEditingRegistration] = useState(null)
+  const editRegistrationModal = useModal()
   const { toast, showSuccess, showError, hideToast } = useToast()
   const [loading, setLoading] = useState(false)
 
@@ -98,6 +100,50 @@ export default function PlayerDashboard() {
   const openEnrollModal = (tournamentCategory) => {
     setSelectedTournamentCategory(tournamentCategory)
     enrollModal.open()
+  }
+
+  const openEditRegistrationModal = (registration) => {
+    setEditingRegistration(registration)
+    setScheduleProblems(registration.schedule_problems || '')
+    editRegistrationModal.open()
+  }
+
+  const handleUpdateRegistration = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const response = await api.patch(`/api/registrations/${editingRegistration.id}`, {
+        schedule_problems: scheduleProblems
+      })
+      if (response.data.ok) {
+        showSuccess('Inscripción actualizada exitosamente')
+        editRegistrationModal.close()
+        setEditingRegistration(null)
+        setScheduleProblems('')
+        fetchData()
+      }
+    } catch (error) {
+      showError(error.response?.data?.error?.message || 'Error al actualizar inscripción')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelRegistration = async (id) => {
+    if (!confirm('¿Estás seguro de que deseas darte de baja del torneo?')) return
+    
+    setLoading(true)
+    try {
+      const response = await api.delete(`/api/registrations/${id}`)
+      if (response.data.ok) {
+        showSuccess('Te has dado de baja exitosamente')
+        fetchData()
+      }
+    } catch (error) {
+      showError(error.response?.data?.error?.message || 'Error al cancelar inscripción')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -268,6 +314,30 @@ export default function PlayerDashboard() {
                            <span className="font-medium">{reg.team.player2.nombre} {reg.team.player2.apellido}</span>
                         </div>
                       </div>
+
+                      {reg.schedule_problems && (
+                        <div className="mt-3 bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+                          <p className="text-xs text-yellow-700 uppercase font-bold mb-1">Problemas de Horario</p>
+                          <p className="text-sm text-yellow-800 italic">{reg.schedule_problems}</p>
+                        </div>
+                      )}
+
+                      {!['en_curso', 'finalizado'].includes(reg.tournamentCategory.tournament.estado) && (
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            onClick={() => openEditRegistrationModal(reg)}
+                            className="text-xs font-medium text-primary-600 hover:text-primary-800 border border-primary-200 bg-white px-3 py-1.5 rounded-md hover:bg-primary-50 transition-colors"
+                          >
+                            Editar Horarios
+                          </button>
+                          <button
+                            onClick={() => handleCancelRegistration(reg.id)}
+                            className="text-xs font-medium text-red-600 hover:text-red-800 border border-red-200 bg-white px-3 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                          >
+                            Darse de Baja
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -364,6 +434,41 @@ export default function PlayerDashboard() {
             </Button>
             <Button variant="primary" type="submit" disabled={loading || !selectedTeam}>
               {loading ? 'Inscribiendo...' : 'Confirmar Inscripción'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={editRegistrationModal.isOpen} onClose={editRegistrationModal.close} title="Editar Inscripción">
+        <form onSubmit={handleUpdateRegistration} className="space-y-6">
+          <div className="bg-primary-50 p-4 rounded-lg border border-primary-100">
+             <p className="text-sm text-primary-800">
+               Estás editando la inscripción para el torneo <strong>{editingRegistration?.tournamentCategory?.tournament?.nombre}</strong>
+             </p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Problemas de Horario
+            </label>
+            <textarea
+              rows={3}
+              value={scheduleProblems}
+              onChange={(e) => setScheduleProblems(e.target.value)}
+              className="shadow-sm focus:ring-primary-500 focus:border-primary-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
+              placeholder="Ej: No puedo jugar el sábado antes de las 14hs"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Mantén esta información actualizada para ayudar a la organización.
+            </p>
+          </div>
+          
+          <div className="flex justify-end space-x-3 pt-2">
+            <Button variant="secondary" type="button" onClick={editRegistrationModal.close}>
+              Cancelar
+            </Button>
+            <Button variant="primary" type="submit" disabled={loading}>
+              {loading ? 'Guardando...' : 'Guardar Cambios'}
             </Button>
           </div>
         </form>

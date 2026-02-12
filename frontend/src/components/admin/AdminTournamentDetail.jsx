@@ -787,6 +787,9 @@ export default function AdminTournamentDetail() {
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {reg.team.player1.categoriaBase.name} ({reg.team.player1.categoriaBase.gender}) / {reg.team.player2.categoriaBase.name} ({reg.team.player2.categoriaBase.gender})
                       </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={reg.schedule_problems}>
+                        {reg.schedule_problems || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded ${
                           reg.estado === 'confirmado' ? 'bg-green-100 text-green-800' :

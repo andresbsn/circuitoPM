@@ -47,9 +47,11 @@ exports.createTeam = async (req, res) => {
         }, 400);
       }
 
-      // Reactivate existing inactive team
-      await existingTeam.update({ estado: TEAM_STATES.ACTIVA });
-      team = existingTeam;
+      // Si la pareja existe pero está inactiva, devolver error específico
+      return sendError(res, {
+        code: ERROR_CODES.TEAM_EXISTS,
+        message: 'La pareja se encuentra inactiva, contactese con el administrador'
+      }, 400);
     } else {
       // Create new team
       team = await Team.create({
