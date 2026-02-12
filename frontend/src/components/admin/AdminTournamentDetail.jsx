@@ -839,6 +839,11 @@ export default function AdminTournamentDetail() {
                            <p className="text-xs text-gray-500 mt-1">
                              Cats: {reg.team.player1.categoriaBase.name} / {reg.team.player2.categoriaBase.name}
                            </p>
+                           {reg.schedule_problems && (
+                             <p className="text-xs text-yellow-600 mt-1 italic">
+                               <span className="font-semibold">Nota:</span> {reg.schedule_problems}
+                             </p>
+                           )}
                         </div>
                         <span className={`px-2 py-1 text-xs rounded ${
                           reg.estado === 'confirmado' ? 'bg-green-100 text-green-800' :
