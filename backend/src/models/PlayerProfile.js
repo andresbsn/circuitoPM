@@ -27,6 +27,10 @@ const PlayerProfile = sequelize.define('PlayerProfile', {
     allowNull: false,
     defaultValue: 'M'
   },
+  locality_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   activo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

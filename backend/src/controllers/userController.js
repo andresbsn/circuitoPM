@@ -1,4 +1,4 @@
-const { User, PlayerProfile, Category } = require('../models');
+const { User, PlayerProfile, Category, Locality } = require('../models');
 const bcrypt = require('bcryptjs');
 const { sendSuccess, sendError, sendValidationError, sendNotFoundError } = require('../utils/responseHelpers');
 const { ERROR_CODES } = require('../utils/constants');
@@ -12,7 +12,8 @@ exports.getAllUsers = async (req, res) => {
           model: PlayerProfile,
           as: 'playerProfile',
           include: [
-            { model: Category, as: 'categoriaBase' }
+            { model: Category, as: 'categoriaBase' },
+            { model: Locality, as: 'locality' }
           ]
         }
       ],

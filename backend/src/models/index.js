@@ -14,12 +14,16 @@ const Bracket = require('./Bracket');
 const Match = require('./Match');
 const Venue = require('./Venue');
 const TournamentPoints = require('./TournamentPoints');
+const Locality = require('./Locality');
 
 User.hasOne(PlayerProfile, { foreignKey: 'dni', sourceKey: 'dni', as: 'playerProfile' });
 PlayerProfile.belongsTo(User, { foreignKey: 'dni', targetKey: 'dni', as: 'user' });
 
 PlayerProfile.belongsTo(Category, { foreignKey: 'categoria_base_id', as: 'categoriaBase' });
 Category.hasMany(PlayerProfile, { foreignKey: 'categoria_base_id', as: 'players' });
+
+PlayerProfile.belongsTo(Locality, { foreignKey: 'locality_id', as: 'locality' });
+Locality.hasMany(PlayerProfile, { foreignKey: 'locality_id', as: 'players' });
 
 Team.belongsTo(PlayerProfile, { foreignKey: 'player1_dni', targetKey: 'dni', as: 'player1' });
 Team.belongsTo(PlayerProfile, { foreignKey: 'player2_dni', targetKey: 'dni', as: 'player2' });

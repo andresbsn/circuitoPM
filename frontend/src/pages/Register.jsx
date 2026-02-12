@@ -12,9 +12,11 @@ export default function Register() {
     apellido: '',
     telefono: '',
     categoria_base_id: '',
-    genero: 'M'
+    genero: 'M',
+    locality_id: ''
   })
   const [categories, setCategories] = useState([])
+  const [localities, setLocalities] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { register } = useAuth()
@@ -22,6 +24,7 @@ export default function Register() {
 
   useEffect(() => {
     fetchCategories()
+    fetchLocalities()
   }, [])
 
   const fetchCategories = async () => {
@@ -32,6 +35,17 @@ export default function Register() {
       }
     } catch (err) {
       console.error('Error fetching categories:', err)
+    }
+  }
+
+  const fetchLocalities = async () => {
+    try {
+      const response = await api.get('/api/tournament-categories/localities')
+      if (response.data.ok) {
+        setLocalities(response.data.data)
+      }
+    } catch (err) {
+      console.error('Error fetching localities:', err)
     }
   }
 
@@ -140,6 +154,24 @@ export default function Register() {
               onChange={handleChange}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             />
+          </div>
+
+          <div>
+            <label htmlFor="locality_id" className="block text-sm font-medium text-gray-700">
+              Localidad
+            </label>
+            <select
+              id="locality_id"
+              name="locality_id"
+              value={formData.locality_id}
+              onChange={handleChange}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">Selecciona una localidad</option>
+              {localities.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name} ({loc.province})</option>
+              ))}
+            </select>
           </div>
 
           <div>
