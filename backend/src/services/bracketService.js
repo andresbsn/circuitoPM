@@ -1,4 +1,4 @@
-const { sequelize, Bracket, Match, Zone, ZoneStanding, Team, PlayerProfile, Category, TournamentCategory } = require('../models');
+const { sequelize, Bracket, Match, Zone, ZoneStanding, Team, PlayerProfile, Category, TournamentCategory, Registration } = require('../models');
 
 function nextPowerOfTwo(n) {
   let power = 1;
@@ -20,6 +20,37 @@ function getRoundName(totalRounds, currentRound) {
     case 5: return '32vos de Final';
     default: return `Ronda ${currentRound}`;
   }
+}
+
+function buildSeededTeams(qualifiedTeams, crossings, totalSlots) {
+  const seedOrder = [];
+  for (const slot of crossings) {
+    if (!slot) continue;
+    const qualified = qualifiedTeams.find(q => q.order_index === slot.zoneIndex && q.position === slot.position);
+    seedOrder.push({
+      team: qualified?.team || null,
+      zone_id: qualified?.zone_id,
+      zone_name: qualified?.zone_name,
+      position: slot.position
+    });
+  }
+
+  // Distribute seeds across round-1 matches to avoid null-vs-null.
+  // First pass: place one seed per match (home). Second pass: fill away.
+  const seededTeams = Array(totalSlots).fill(null);
+  const matchesInRound1 = totalSlots / 2;
+
+  for (let i = 0; i < Math.min(seedOrder.length, matchesInRound1); i++) {
+    seededTeams[i * 2] = seedOrder[i];
+  }
+
+  for (let k = matchesInRound1; k < seedOrder.length; k++) {
+    const matchIdx = k - matchesInRound1;
+    if (matchIdx >= matchesInRound1) break;
+    seededTeams[matchIdx * 2 + 1] = seedOrder[k];
+  }
+
+  return seededTeams;
 }
 
 async function resolveHeadToHead(tiedTeams, zoneId, transaction) {
@@ -169,30 +200,22 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       generado_at: new Date()
     }, { transaction });
 
-    const totalSlots = nextPowerOfTwo(totalExpectedQualifiers);
+    const registrationsCount = await Registration.count({
+      where: {
+        tournament_category_id: tournamentCategoryId,
+        estado: ['inscripto', 'confirmado']
+      },
+      transaction
+    });
+
+    const minSlots = registrationsCount > 13 ? 16 : 8;
+    const totalSlots = Math.max(nextPowerOfTwo(totalExpectedQualifiers), minSlots);
     const totalRounds = Math.log2(totalSlots);
 
     // Generar cruces según clasificados
     const crossings = generateCrossings(qualifiedTeams);
 
-    const seededTeams = [];
-    for (let i = 0; i < totalSlots; i++) {
-      if (i < crossings.length && crossings[i]) {
-        const slot = crossings[i];
-
-        // El slot ya contiene zoneIndex y position, encontrar el equipo correspondiente
-        const qualified = qualifiedTeams.find(q => q.order_index === slot.zoneIndex && q.position === slot.position);
-
-        seededTeams.push({
-          team: qualified?.team || null,
-          zone_id: qualified?.zone_id,
-          zone_name: qualified?.zone_name,
-          position: slot.position
-        });
-      } else {
-        seededTeams.push(null);
-      }
-    }
+    const seededTeams = buildSeededTeams(qualifiedTeams, crossings, totalSlots);
 
     const allMatches = [];
     let matchIdCounter = -1000;
@@ -493,6 +516,24 @@ async function generateBracketManual(tournamentCategoryId, seededTeams, force = 
       status: 'published',
       generado_at: new Date()
     }, { transaction });
+
+    const registrationsCount = await Registration.count({
+      where: {
+        tournament_category_id: tournamentCategoryId,
+        estado: ['inscripto', 'confirmado']
+      },
+      transaction
+    });
+
+    const minSlots = registrationsCount > 13 ? 16 : 8;
+
+    if (seededTeams.length < minSlots) {
+      const extended = new Array(minSlots).fill(null);
+      for (let i = 0; i < seededTeams.length; i++) {
+        extended[i] = seededTeams[i];
+      }
+      seededTeams = extended;
+    }
 
     const totalSlots = seededTeams.length;
     const totalRounds = Math.log2(totalSlots);

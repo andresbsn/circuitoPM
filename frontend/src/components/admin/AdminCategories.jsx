@@ -7,7 +7,7 @@ export default function AdminCategories() {
   const [categories, setCategories] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
-  const [formData, setFormData] = useState({ name: '', rank: '' })
+  const [formData, setFormData] = useState({ name: '', rank: '', gender: 'caballeros' })
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -43,7 +43,7 @@ export default function AdminCategories() {
         }
       }
       setShowModal(false)
-      setFormData({ name: '', rank: '' })
+      setFormData({ name: '', rank: '', gender: 'caballeros' })
       setEditingCategory(null)
       fetchCategories()
     } catch (error) {
@@ -55,7 +55,7 @@ export default function AdminCategories() {
 
   const handleEdit = (category) => {
     setEditingCategory(category)
-    setFormData({ name: category.name, rank: category.rank })
+    setFormData({ name: category.name, rank: category.rank, gender: category.gender || 'caballeros' })
     setShowModal(true)
   }
 
@@ -96,6 +96,7 @@ export default function AdminCategories() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Género</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
@@ -105,6 +106,7 @@ export default function AdminCategories() {
               {categories.map(category => (
                 <tr key={category.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{category.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{category.gender}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{category.rank}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded ${category.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
@@ -132,7 +134,7 @@ export default function AdminCategories() {
               <li key={category.id} className="p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <span className="block text-sm font-bold text-gray-900">{category.name}</span>
+                    <span className="block text-sm font-bold text-gray-900">{category.name} <span className="text-xs font-normal text-gray-500 capitalize">({category.gender})</span></span>
                     <span className="block text-xs text-gray-500">Rank/Orden: {category.rank}</span>
                   </div>
                   <span className={`px-2 py-1 text-xs rounded ${category.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
@@ -165,6 +167,17 @@ export default function AdminCategories() {
               required
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Género</label>
+            <select
+              value={formData.gender}
+              onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="caballeros">Caballeros</option>
+              <option value="damas">Damas</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Rank (menor = más alto)</label>

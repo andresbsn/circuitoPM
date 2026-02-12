@@ -206,7 +206,7 @@ async function getPlayerRanking(categoryId = null, limit = 100) {
         dni: tp.player.dni,
         nombre: tp.player.nombre,
         apellido: tp.player.apellido,
-        categoria: tp.tournamentCategory.category.name,
+        categoria: `${tp.tournamentCategory.category.name} (${tp.tournamentCategory.category.gender})`,
         categoryId: categoryId,
         totalPoints: 0,
         tournamentsPlayed: new Set(),
@@ -276,11 +276,13 @@ async function getPlayerPoints(playerDni) {
   player.tournamentPoints.forEach(tp => {
     const categoryId = tp.tournamentCategory.category_id;
     const categoryName = tp.tournamentCategory.category.name;
+    const categoryGender = tp.tournamentCategory.category.gender;
 
     if (!pointsByCategory[categoryId]) {
       pointsByCategory[categoryId] = {
         categoryId: categoryId,
         categoryName: categoryName,
+        categoryGender: categoryGender,
         totalPoints: 0,
         tournamentsPlayed: new Set(),
         pointsHistory: []
@@ -302,6 +304,7 @@ async function getPlayerPoints(playerDni) {
   const categoriesData = Object.values(pointsByCategory).map(cat => ({
     categoryId: cat.categoryId,
     categoryName: cat.categoryName,
+    categoryGender: cat.categoryGender,
     totalPoints: cat.totalPoints,
     tournamentsPlayed: cat.tournamentsPlayed.size,
     pointsHistory: cat.pointsHistory
@@ -315,7 +318,9 @@ async function getPlayerPoints(playerDni) {
       dni: player.dni,
       nombre: player.nombre,
       apellido: player.apellido,
-      categoriaBase: player.categoriaBase?.name
+      genero: player.genero,
+      categoriaBase: player.categoriaBase?.name,
+      categoriaBaseGender: player.categoriaBase?.gender
     },
     categories: categoriesData,
     totalTournaments: player.tournamentPoints.length

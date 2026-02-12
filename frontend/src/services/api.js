@@ -7,6 +7,24 @@ const api = axios.create({
   }
 })
 
+api.interceptors.request.use(config => {
+  if (config.method?.toLowerCase() === 'get' && typeof config.url === 'string' && config.url.startsWith('/api/')) {
+    config.headers = {
+      ...config.headers,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0'
+    }
+
+    config.params = {
+      ...(config.params || {}),
+      _ts: Date.now()
+    }
+  }
+
+  return config
+})
+
 api.interceptors.response.use(
   response => response,
   error => {

@@ -318,8 +318,26 @@ export default function AdminTournamentDetail() {
     }
   }
 
-  const handleGeneratePlayoffs = () => {
-    setShowPlayoffModal(true);
+  const handleGeneratePlayoffs = async () => {
+    try {
+      const response = await api.get(`/api/admin/registrations?tournamentCategoryId=${selectedCategory}`)
+      if (response.data.ok) {
+        const confirmedCount = Array.isArray(response.data.data)
+          ? response.data.data.filter(r => ['inscripto', 'confirmado'].includes(r.estado)).length
+          : 0
+        const suggestedSlots = confirmedCount > 13 ? 16 : 8
+        setManualPlayoffConfig(prev => ({ ...prev, totalSlots: suggestedSlots }))
+      }
+
+      const zonesResponse = await api.get(`/api/tournament-categories/zones?tournament_category_id=${selectedCategory}`)
+      if (zonesResponse.data.ok) {
+        setZones(Array.isArray(zonesResponse.data.data) ? zonesResponse.data.data : [])
+      }
+    } catch {
+      // fallback: keep current selection
+    } finally {
+      setShowPlayoffModal(true)
+    }
   }
 
   const handleAssignTeamToZone = (registration, zoneIndex) => {
@@ -569,6 +587,47 @@ export default function AdminTournamentDetail() {
     setScoreInput({ sets: [...scoreInput.sets, { home: '', away: '' }] })
   }
 
+  const getPlayoffTeamLabel = (match, side) => {
+    const team = side === 'home' ? match.teamHome : match.teamAway
+    if (team?.player1 && team?.player2) {
+      return `${team.player1.nombre} ${team.player1.apellido} / ${team.player2.nombre} ${team.player2.apellido}`
+    }
+
+    const sourceZoneId = side === 'home' ? match.home_source_zone_id : match.away_source_zone_id
+    const sourcePosition = side === 'home' ? match.home_source_position : match.away_source_position
+    const sourceZone = side === 'home' ? match.homeSourceZone : match.awaySourceZone
+
+    if (sourceZoneId && sourcePosition) {
+      return `${sourcePosition}° Zona ${sourceZone?.name || '?'}`
+    }
+
+    const sourceMatch = playoffs?.matches?.find(m => m.next_match_id === match.id && m.next_match_slot === side)
+    if (sourceMatch) {
+      return `Ganador Partido ${sourceMatch.match_number}`
+    }
+
+    return 'TBD'
+  }
+
+  const getZoneMatchTeamLabel = (match, side) => {
+    const team = side === 'home' ? match.teamHome : match.teamAway
+    if (team?.player1 && team?.player2) {
+      return `${team.player1.nombre} ${team.player1.apellido} / ${team.player2.nombre} ${team.player2.apellido}`
+    }
+
+    const parentMatchId = side === 'home' ? match.parent_match_home_id : match.parent_match_away_id
+    const parentCondition = side === 'home' ? match.parent_condition_home : match.parent_condition_away
+
+    if (parentMatchId && parentCondition) {
+      const parentMatch = zoneMatches?.find(m => m.id === parentMatchId)
+      const parentLabel = parentMatch ? `Partido ${parentMatch.match_number}` : 'Partido'
+      if (parentCondition === 'winner') return `Ganador ${parentLabel}`
+      if (parentCondition === 'loser') return `Perdedor ${parentLabel}`
+    }
+
+    return 'TBD'
+  }
+
   if (!tournament) {
     return <div>Cargando...</div>
   }
@@ -637,6 +696,7 @@ export default function AdminTournamentDetail() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Género</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cupo</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscripción</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Formato</th>
@@ -647,6 +707,7 @@ export default function AdminTournamentDetail() {
                   {tournament.categories?.map(tc => (
                     <tr key={tc.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{tc.category.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{tc.category.gender}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tc.cupo || 'Sin límite'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded ${tc.inscripcion_abierta ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -724,7 +785,7 @@ export default function AdminTournamentDetail() {
                         {reg.team.player1.nombre} {reg.team.player1.apellido} / {reg.team.player2.nombre} {reg.team.player2.apellido}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {reg.team.player1.categoriaBase.name} / {reg.team.player2.categoriaBase.name}
+                        {reg.team.player1.categoriaBase.name} ({reg.team.player1.categoriaBase.gender}) / {reg.team.player2.categoriaBase.name} ({reg.team.player2.categoriaBase.gender})
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded ${
@@ -853,14 +914,14 @@ export default function AdminTournamentDetail() {
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="mb-2">
-                        <span className="text-xs text-gray-500">Zona {match.zone.name} - Ronda {match.round_number}</span>
+                        <span className="text-xs text-gray-500">Zona {match.zone?.name || '?'} - Ronda {match.round_number}</span>
                       </div>
                       <p className="text-sm font-medium text-gray-900">
-                        {match.teamHome.player1.nombre} {match.teamHome.player1.apellido} / {match.teamHome.player2.nombre} {match.teamHome.player2.apellido}
+                        {getZoneMatchTeamLabel(match, 'home')}
                       </p>
                       <p className="text-sm text-gray-500 my-1">vs</p>
                       <p className="text-sm font-medium text-gray-900">
-                        {match.teamAway.player1.nombre} {match.teamAway.player1.apellido} / {match.teamAway.player2.nombre} {match.teamAway.player2.apellido}
+                        {getZoneMatchTeamLabel(match, 'away')}
                       </p>
                       {(match.scheduled_at || match.venue) && (
                         <div className="mt-3 text-xs text-gray-600 space-y-1">
@@ -950,21 +1011,11 @@ export default function AdminTournamentDetail() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm text-gray-900">
-                          {match.teamHome 
-                            ? `${match.teamHome.player1.nombre} ${match.teamHome.player1.apellido} / ${match.teamHome.player2.nombre} ${match.teamHome.player2.apellido}` 
-                            : match.home_source_zone_id 
-                              ? <span className="italic text-gray-500">{match.home_source_position}° Zona {match.homeSourceZone?.name || '?'}</span>
-                              : 'TBD'
-                          }
+                          {getPlayoffTeamLabel(match, 'home')}
                         </p>
                         <p className="text-sm text-gray-500">vs</p>
                         <p className="text-sm text-gray-900">
-                          {match.teamAway 
-                            ? `${match.teamAway.player1.nombre} ${match.teamAway.player1.apellido} / ${match.teamAway.player2.nombre} ${match.teamAway.player2.apellido}` 
-                            : match.away_source_zone_id 
-                              ? <span className="italic text-gray-500">{match.away_source_position}° Zona {match.awaySourceZone?.name || '?'}</span>
-                              : 'TBD'
-                          }
+                          {getPlayoffTeamLabel(match, 'away')}
                         </p>
                       </div>
                       {(match.scheduled_at || match.venue) && (
@@ -1022,7 +1073,7 @@ export default function AdminTournamentDetail() {
             >
               <option value="">Selecciona una categoría</option>
               {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                <option key={cat.id} value={cat.id}>{cat.name} ({cat.gender})</option>
               ))}
             </select>
           </div>
@@ -1223,7 +1274,7 @@ export default function AdminTournamentDetail() {
               <option value="">Seleccione una pareja</option>
               {availableTeams.map(team => (
                 <option key={team.id} value={team.id}>
-                  {team.player1.nombre} {team.player1.apellido} / {team.player2.nombre} {team.player2.apellido} ({team.player1.categoriaBase.name} / {team.player2.categoriaBase.name})
+                  {team.player1.nombre} {team.player1.apellido} / {team.player2.nombre} {team.player2.apellido} ({team.player1.categoriaBase.name} [{team.player1.categoriaBase.gender}] / {team.player2.categoriaBase.name} [{team.player2.categoriaBase.gender}])
                 </option>
               ))}
             </select>

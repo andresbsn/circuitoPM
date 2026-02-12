@@ -87,7 +87,9 @@ export default function PlayerPoints() {
             <div key={category.categoryId} className="bg-white rounded-lg shadow overflow-hidden">
               <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-white">{category.categoryName}</h3>
+                  <h3 className="text-xl font-bold text-white">
+                    {category.categoryName} <span className="text-sm font-normal text-primary-100">({category.categoryGender})</span>
+                  </h3>
                   <div className="text-right">
                     <p className="text-3xl font-bold text-white">{category.totalPoints}</p>
                     <p className="text-sm text-primary-100">puntos totales</p>

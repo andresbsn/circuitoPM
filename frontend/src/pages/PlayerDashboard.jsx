@@ -149,7 +149,9 @@ export default function PlayerDashboard() {
                         <div className="space-y-3">
                            {tournament.categories?.map(tc => (
                              <div key={tc.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                               <span className="text-sm font-medium text-gray-700">{tc.category.name}</span>
+                               <span className="text-sm font-medium text-gray-700">
+                                 {tc.category.name} <span className="text-xs text-gray-500 font-normal">({tc.category.gender})</span>
+                               </span>
                                {tc.inscripcion_abierta ? (
                                  <button
                                    onClick={() => openEnrollModal(tc)}
@@ -213,7 +215,7 @@ export default function PlayerDashboard() {
                              {team.player1.nombre.charAt(0)}
                           </div>
                           <p className="text-sm font-bold text-gray-900 truncate">{team.player1.nombre} {team.player1.apellido}</p>
-                          <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-1 rounded mt-1">{team.player1.categoriaBase.name}</p>
+                          <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-1 rounded mt-1">{team.player1.categoriaBase.name} ({team.player1.categoriaBase.gender})</p>
                        </div>
                        
                        <div className="text-gray-300 font-bold text-xl">VS</div>
@@ -223,7 +225,7 @@ export default function PlayerDashboard() {
                              {team.player2.nombre.charAt(0)}
                           </div>
                           <p className="text-sm font-bold text-gray-900 truncate">{team.player2.nombre} {team.player2.apellido}</p>
-                          <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-1 rounded mt-1">{team.player2.categoriaBase.name}</p>
+                          <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-1 rounded mt-1">{team.player2.categoriaBase.name} ({team.player2.categoriaBase.gender})</p>
                        </div>
                     </div>
                   </div>

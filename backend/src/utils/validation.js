@@ -17,6 +17,18 @@ async function validateCategoryEligibility(playerDni, tournamentCategoryId) {
     return { valid: false, error: 'Categoría de torneo no encontrada' };
   }
 
+  // Validar Género
+  const categoryGender = tournamentCategory.category.gender;
+  const playerGender = player.genero;
+
+  if (categoryGender === 'caballeros' && playerGender !== 'M') {
+    return { valid: false, error: `Esta categoría es de Caballeros, el jugador es Femenino` };
+  }
+
+  if (categoryGender === 'damas' && playerGender !== 'F') {
+    return { valid: false, error: `Esta categoría es de Damas, el jugador es Masculino` };
+  }
+
   const baseRank = player.categoriaBase.rank;
   const tournamentRank = tournamentCategory.category.rank;
 

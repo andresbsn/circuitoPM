@@ -22,6 +22,11 @@ const PlayerProfile = sequelize.define('PlayerProfile', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  genero: {
+    type: DataTypes.ENUM('M', 'F'),
+    allowNull: false,
+    defaultValue: 'M'
+  },
   activo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

@@ -63,6 +63,16 @@ const USER_ROLES = {
   PLAYER: 'player'
 };
 
+const CATEGORY_GENDERS = {
+  CABALLEROS: 'caballeros',
+  DAMAS: 'damas'
+};
+
+const PLAYER_GENDERS = {
+  M: 'M',
+  F: 'F'
+};
+
 const DEFAULT_VALUES = {
   MATCH_FORMAT: 'BEST_OF_3_SUPER_TB',
   SUPER_TIEBREAK_POINTS: 10,
@@ -81,5 +91,7 @@ module.exports = {
   MATCH_FORMATS,
   SET_TYPES,
   USER_ROLES,
+  CATEGORY_GENDERS,
+  PLAYER_GENDERS,
   DEFAULT_VALUES
 };

@@ -124,7 +124,7 @@ export default function AdminTeams() {
           >
             <option value="">Todas las categorías</option>
             {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
+              <option key={cat.id} value={cat.id}>{cat.name} ({cat.gender})</option>
             ))}
           </select>
         </div>
@@ -164,14 +164,14 @@ export default function AdminTeams() {
                     <div className="text-xs text-gray-500">DNI: {team.player1.dni}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {team.player1.categoriaBase.name}
+                    {team.player1.categoriaBase.name} ({team.player1.categoriaBase.gender})
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {team.player2.nombre} {team.player2.apellido}
                     <div className="text-xs text-gray-500">DNI: {team.player2.dni}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {team.player2.categoriaBase.name}
+                    {team.player2.categoriaBase.name} ({team.player2.categoriaBase.gender})
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded ${

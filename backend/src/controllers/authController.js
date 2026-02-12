@@ -6,9 +6,9 @@ const { ERROR_CODES, USER_ROLES } = require('../utils/constants');
 
 exports.register = async (req, res) => {
   try {
-    const { dni, password, nombre, apellido, telefono, categoria_base_id } = req.body;
+    const { dni, password, nombre, apellido, telefono, categoria_base_id, genero } = req.body;
 
-    if (!dni || !password || !nombre || !apellido || !categoria_base_id) {
+    if (!dni || !password || !nombre || !apellido || !categoria_base_id || !genero) {
       return sendValidationError(res, 'Todos los campos son obligatorios');
     }
 
@@ -39,6 +39,7 @@ exports.register = async (req, res) => {
       apellido,
       telefono,
       categoria_base_id,
+      genero,
       activo: true
     });
 

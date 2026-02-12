@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { generateZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
 const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
 const { updatePlayoffsAfterZoneResults } = require('../services/playoffUpdateService');
-const { validateScoreFormat, calculateMatchStats } = require('../utils/validation');
+const { validateScoreFormat, calculateMatchStats, validateTeamCategoryEligibility } = require('../utils/validation');
 const { sequelize } = require('../models');
 const { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendConflictError } = require('../utils/responseHelpers');
 const { ERROR_CODES, TOURNAMENT_STATES, TOURNAMENT_CATEGORY_STATES, DEFAULT_VALUES, TEAM_STATES } = require('../utils/constants');
@@ -11,13 +11,18 @@ const { includeTeamWithPlayers, includeTournamentCategory, includeTournamentWith
 
 exports.createCategory = async (req, res) => {
   try {
-    const { name, rank } = req.body;
+    const { name, rank, gender } = req.body;
 
     if (!name || rank === undefined) {
       return sendValidationError(res, 'Nombre y rank son obligatorios');
     }
 
-    const category = await Category.create({ name, rank, active: true });
+    const category = await Category.create({ 
+      name, 
+      rank, 
+      gender: gender || 'caballeros',
+      active: true 
+    });
 
     return sendSuccess(res, category, 201);
   } catch (error) {
@@ -33,7 +38,7 @@ exports.createCategory = async (req, res) => {
 exports.updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, rank, active } = req.body;
+    const { name, rank, gender, active } = req.body;
 
     const category = await Category.findByPk(id);
     if (!category) {
@@ -45,6 +50,7 @@ exports.updateCategory = async (req, res) => {
 
     if (name !== undefined) category.name = name;
     if (rank !== undefined) category.rank = rank;
+    if (gender !== undefined) category.gender = gender;
     if (active !== undefined) category.active = active;
 
     await category.save();
@@ -368,6 +374,11 @@ exports.createRegistrationAdmin = async (req, res) => {
 
     if (!team) {
       return sendNotFoundError(res, 'Pareja no encontrada');
+    }
+
+    const validation = await validateTeamCategoryEligibility(team_id, tournament_category_id);
+    if (!validation.valid) {
+      return sendValidationError(res, validation.error);
     }
 
     const existingRegistration = await Registration.findOne({

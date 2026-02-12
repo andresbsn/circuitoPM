@@ -11,7 +11,8 @@ export default function Register() {
     nombre: '',
     apellido: '',
     telefono: '',
-    categoria_base_id: ''
+    categoria_base_id: '',
+    genero: 'M'
   })
   const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
@@ -142,6 +143,23 @@ export default function Register() {
           </div>
 
           <div>
+            <label htmlFor="genero" className="block text-sm font-medium text-gray-700">
+              Género *
+            </label>
+            <select
+              id="genero"
+              name="genero"
+              value={formData.genero}
+              onChange={handleChange}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="M">Masculino</option>
+              <option value="F">Femenino</option>
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="categoria_base_id" className="block text-sm font-medium text-gray-700">
               Categoría Base *
             </label>
@@ -154,9 +172,12 @@ export default function Register() {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="">Selecciona una categoría</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
+              {categories
+                .filter(cat => cat.gender === (formData.genero === 'M' ? 'caballeros' : 'damas'))
+                .map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))
+              }
             </select>
           </div>
 

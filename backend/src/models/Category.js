@@ -9,13 +9,16 @@ const Category = sequelize.define('Category', {
   },
   name: {
     type: DataTypes.STRING(50),
-    allowNull: false,
-    unique: true
+    allowNull: false
   },
   rank: {
     type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  gender: {
+    type: DataTypes.ENUM('caballeros', 'damas'),
     allowNull: false,
-    unique: true
+    defaultValue: 'caballeros'
   },
   active: {
     type: DataTypes.BOOLEAN,
@@ -25,7 +28,17 @@ const Category = sequelize.define('Category', {
   tableName: 'categories',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    {
+      unique: true,
+      fields: ['name', 'gender']
+    },
+    {
+      unique: true,
+      fields: ['rank', 'gender']
+    }
+  ]
 });
 
 module.exports = Category;

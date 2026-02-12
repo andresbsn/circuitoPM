@@ -120,6 +120,7 @@ export default function AdminUsers() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">DNI</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Género</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
@@ -135,7 +136,10 @@ export default function AdminUsers() {
                     {user.profile ? `${user.profile.nombre} ${user.profile.apellido}` : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.profile?.categoriaBase?.name || '-'}
+                    {user.profile?.genero || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {user.profile?.categoriaBase?.name ? `${user.profile.categoriaBase.name} (${user.profile.categoriaBase.gender})` : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded ${

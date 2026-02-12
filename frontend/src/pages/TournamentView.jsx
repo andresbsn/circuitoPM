@@ -50,10 +50,12 @@ export default function TournamentView() {
         if (response.data.ok) setStandings(response.data.data)
       } else if (activeTab === 'matches') {
         const response = await api.get(`/api/tournament-categories/zone-matches?tournament_category_id=${selectedCategory}`)
-        if (response.data.ok) setZoneMatches(response.data.data)
+        if (response.data.ok) setZoneMatches(Array.isArray(response.data.data) ? response.data.data : [])
+        else setZoneMatches([])
       } else if (activeTab === 'playoffs') {
         const response = await api.get(`/api/tournament-categories/playoffs?tournament_category_id=${selectedCategory}`)
         if (response.data.ok) setPlayoffs(response.data.data)
+        else setPlayoffs(null)
       }
     } catch (error) {
       console.error('Error fetching category data:', error)
@@ -65,6 +67,47 @@ export default function TournamentView() {
     return scoreJson.sets.map(set => 
       set.type === 'SUPER_TB' ? `${set.home}-${set.away} (TB)` : `${set.home}-${set.away}`
     ).join(' ')
+  }
+
+  const getPlayoffTeamLabel = (match, side) => {
+    const team = side === 'home' ? match.teamHome : match.teamAway
+    if (team?.player1 && team?.player2) {
+      return `${team.player1.nombre} ${team.player1.apellido} / ${team.player2.nombre} ${team.player2.apellido}`
+    }
+
+    const sourceZoneId = side === 'home' ? match.home_source_zone_id : match.away_source_zone_id
+    const sourcePosition = side === 'home' ? match.home_source_position : match.away_source_position
+    const sourceZone = side === 'home' ? match.homeSourceZone : match.awaySourceZone
+
+    if (sourceZoneId && sourcePosition) {
+      return `${sourcePosition}° Zona ${sourceZone?.name || '?'}`
+    }
+
+    const sourceMatch = playoffs?.matches?.find(m => m.next_match_id === match.id && m.next_match_slot === side)
+    if (sourceMatch) {
+      return `Ganador Partido ${sourceMatch.match_number}`
+    }
+
+    return 'TBD'
+  }
+
+  const getZoneMatchTeamLabel = (match, side) => {
+    const team = side === 'home' ? match.teamHome : match.teamAway
+    if (team?.player1 && team?.player2) {
+      return `${team.player1.nombre} ${team.player1.apellido} / ${team.player2.nombre} ${team.player2.apellido}`
+    }
+
+    const parentMatchId = side === 'home' ? match.parent_match_home_id : match.parent_match_away_id
+    const parentCondition = side === 'home' ? match.parent_condition_home : match.parent_condition_away
+
+    if (parentMatchId && parentCondition) {
+      const parentMatch = zoneMatches?.find(m => m.id === parentMatchId)
+      const parentLabel = parentMatch ? `Partido ${parentMatch.match_number}` : 'Partido'
+      if (parentCondition === 'winner') return `Ganador ${parentLabel}`
+      if (parentCondition === 'loser') return `Perdedor ${parentLabel}`
+    }
+
+    return 'TBD'
   }
 
   const handleBack = () => {
@@ -107,7 +150,7 @@ export default function TournamentView() {
             className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
           >
             {tournament.categories?.map(tc => (
-              <option key={tc.id} value={tc.id}>{tc.category.name}</option>
+              <option key={tc.id} value={tc.id}>{tc.category.name} ({tc.category.gender})</option>
             ))}
           </select>
         </div>
@@ -229,11 +272,11 @@ export default function TournamentView() {
                             <div className="md:col-span-2 flex justify-between items-center">
                               <div className="flex-1">
                                 <p className={`text-sm font-medium ${match.winner_team_id === match.team_home_id ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
-                                  {match.teamHome.player1.nombre} {match.teamHome.player1.apellido} / {match.teamHome.player2.nombre} {match.teamHome.player2.apellido}
+                                  {getZoneMatchTeamLabel(match, 'home')}
                                 </p>
                                 <p className="text-xs text-gray-400 my-1">vs</p>
                                 <p className={`text-sm font-medium ${match.winner_team_id === match.team_away_id ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
-                                  {match.teamAway.player1.nombre} {match.teamAway.player1.apellido} / {match.teamAway.player2.nombre} {match.teamAway.player2.apellido}
+                                  {getZoneMatchTeamLabel(match, 'away')}
                                 </p>
                               </div>
                               <div className="text-right ml-4">
@@ -280,13 +323,13 @@ export default function TournamentView() {
                             <div className="space-y-2">
                               <div className={`flex justify-between items-center ${match.winner_team_id === match.team_home_id ? 'font-semibold' : ''}`}>
                                 <span className="text-sm">
-                                  {match.teamHome ? `${match.teamHome.player1.nombre} ${match.teamHome.player1.apellido} / ${match.teamHome.player2.nombre} ${match.teamHome.player2.apellido}` : 'TBD'}
+                                  {getPlayoffTeamLabel(match, 'home')}
                                 </span>
                                 {match.status === 'played' && match.winner_team_id === match.team_home_id && <span className="text-green-600">✓</span>}
                               </div>
                               <div className={`flex justify-between items-center ${match.winner_team_id === match.team_away_id ? 'font-semibold' : ''}`}>
                                 <span className="text-sm">
-                                  {match.teamAway ? `${match.teamAway.player1.nombre} ${match.teamAway.player1.apellido} / ${match.teamAway.player2.nombre} ${match.teamAway.player2.apellido}` : 'TBD'}
+                                  {getPlayoffTeamLabel(match, 'away')}
                                 </span>
                                 {match.status === 'played' && match.winner_team_id === match.team_away_id && <span className="text-green-600">✓</span>}
                               </div>
