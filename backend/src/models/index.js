@@ -90,5 +90,6 @@ module.exports = {
   Bracket,
   Match,
   Venue,
-  TournamentPoints
+  TournamentPoints,
+  Locality
 };
