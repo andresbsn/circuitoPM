@@ -40,10 +40,10 @@ export default function Layout({ children, title, navigationItems = [] }) {
                 </button>
               </div>
 
-              <div className="flex-shrink-0 flex items-center cursor-pointer group gap-3" onClick={() => navigate('/')}>
-                 <img src={logo} alt="Logo" className="h-10 w-auto rounded-lg shadow-sm border border-gray-200" />
+              <div className="flex-shrink-1 flex items-center cursor-pointer group gap-2 md:gap-3 overflow-hidden" onClick={() => navigate('/')}>
+                 <img src={logo} alt="Logo" className="h-8 md:h-10 w-auto rounded-lg shadow-sm border border-gray-200 flex-shrink-0" />
                  {/* Premium Text Effect for Logo */}
-                 <h1 className="text-xl md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-gray-800 tracking-tight group-hover:opacity-80 transition-opacity">
+                 <h1 className="text-lg md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-gray-800 tracking-tight group-hover:opacity-80 transition-opacity truncate">
                    {title || 'Circuito Pádel PM'}
                  </h1>
               </div>
@@ -80,7 +80,7 @@ export default function Layout({ children, title, navigationItems = [] }) {
             </div>
 
             {/* User Dropdown / Logout */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 md:space-x-4 flex-shrink-0">
                {user ? (
                  <div className="flex items-center space-x-3">
                    <div className="hidden md:flex flex-col items-end mr-2">
@@ -102,8 +102,8 @@ export default function Layout({ children, title, navigationItems = [] }) {
                    </button>
                  </div>
                ) : (
-                 <div className="flex items-center space-x-4">
-                    <Link to="/login" className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md shadow-primary-500/30 hover:shadow-lg hover:shadow-primary-500/40 transition-all duration-200 transform hover:-translate-y-0.5">
+                 <div className="flex items-center">
+                    <Link to="/login" className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 md:px-5 md:py-2.5 rounded-lg text-xs md:text-sm font-semibold shadow-md shadow-primary-500/30 hover:shadow-lg hover:shadow-primary-500/40 transition-all duration-200 transform hover:-translate-y-0.5 whitespace-nowrap">
                       Iniciar Sesión
                     </Link>
                  </div>
