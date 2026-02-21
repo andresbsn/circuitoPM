@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import Toast from '../components/Toast'
+import { AlertMessage } from '../components/Toast'
 import fapLogo from '../assets/fap.jpg'
 import logo from '../assets/logo_original.jpeg'
 
@@ -22,7 +22,17 @@ export default function Login() {
       const user = await login(dni, password)
       navigate(user.role === 'admin' ? '/admin' : '/dashboard')
     } catch (err) {
-      setError(err.response?.data?.error?.message || err.message || 'Error al iniciar sesión')
+      const serverMsg = err.response?.data?.error?.message || err.message || ''
+      // Map technical messages to user-friendly ones
+      if (err.response?.status === 401) {
+        setError('El DNI o la contraseña que ingresaste son incorrectos. Por favor, revisá los datos e intentá nuevamente.')
+      } else if (err.response?.status === 422) {
+        setError(serverMsg || 'Por favor, completá todos los campos obligatorios.')
+      } else if (!err.response) {
+        setError('No se pudo conectar con el servidor. Verificá tu conexión a internet e intentá nuevamente.')
+      } else {
+        setError(serverMsg || 'Ocurrió un error inesperado. Por favor, intentá nuevamente más tarde.')
+      }
     } finally {
       setLoading(false)
     }
@@ -54,13 +64,15 @@ export default function Login() {
       {/* Right Side - Login Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
         <div className="max-w-md w-full">
-          {error && <Toast message={error} type="error" onClose={() => setError('')} />}
+
           
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-12 border border-gray-100">
             <div className="text-center mb-10">
               <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">¡Bienvenido de nuevo!</h1>
-              <p className="text-gray-500 mt-2">Ingresa a tu cuenta para continuar</p>
+              <p className="text-gray-500 mt-2">Ingresá a tu cuenta para continuar</p>
             </div>
+
+            <AlertMessage message={error} type="error" onClose={() => setError('')} />
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>

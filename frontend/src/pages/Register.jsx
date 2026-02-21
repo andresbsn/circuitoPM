@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
-import Toast from '../components/Toast'
+import { AlertMessage } from '../components/Toast'
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -65,7 +65,16 @@ export default function Register() {
       await register(formData)
       navigate('/dashboard')
     } catch (err) {
-      setError(err.response?.data?.error?.message || err.message || 'Error al registrar')
+      const serverMsg = err.response?.data?.error?.message || err.message || ''
+      if (err.response?.status === 400 && serverMsg.includes('Ya existe')) {
+        setError('Ya existe una cuenta registrada con ese DNI. Si ya tenés cuenta, podés iniciar sesión directamente.')
+      } else if (err.response?.status === 422) {
+        setError(serverMsg || 'Por favor, completá todos los campos obligatorios.')
+      } else if (!err.response) {
+        setError('No se pudo conectar con el servidor. Verificá tu conexión a internet e intentá nuevamente.')
+      } else {
+        setError(serverMsg || 'Ocurrió un error al registrar. Por favor, intentá nuevamente más tarde.')
+      }
     } finally {
       setLoading(false)
     }
@@ -73,13 +82,13 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center px-4 py-8">
-      {error && <Toast message={error} type="error" onClose={() => setError('')} />}
-      
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Registro</h1>
-          <p className="text-gray-600 mt-2">Crea tu cuenta de jugador</p>
+          <p className="text-gray-600 mt-2">Creá tu cuenta de jugador</p>
         </div>
+
+        <AlertMessage message={error} type="error" onClose={() => setError('')} />
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
