@@ -1,4 +1,4 @@
-const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProfile, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Bracket, Match, Venue, User } = require('../models');
+const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProfile, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Bracket, Match, Venue, User, Locality } = require('../models');
 const bcrypt = require('bcryptjs');
 const { generateZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
 const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
@@ -17,11 +17,11 @@ exports.createCategory = async (req, res) => {
       return sendValidationError(res, 'Nombre y rank son obligatorios');
     }
 
-    const category = await Category.create({ 
-      name, 
-      rank, 
+    const category = await Category.create({
+      name,
+      rank,
       gender: gender || 'caballeros',
-      active: true 
+      active: true
     });
 
     return sendSuccess(res, category, 201);
@@ -1361,6 +1361,137 @@ exports.rebuildStandings = async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: { code: 'SERVER_ERROR', message: 'Error al recalcular standings', details: error.message }
+    });
+  }
+};
+exports.getAllPlayers = async (req, res) => {
+  try {
+    const { nombre, dni } = req.query;
+    const { Op } = require('sequelize');
+
+    const where = {};
+    if (nombre) {
+      where[Op.or] = [
+        { nombre: { [Op.iLike]: `%${nombre}%` } },
+        { apellido: { [Op.iLike]: `%${nombre}%` } }
+      ];
+    }
+    if (dni) {
+      where.dni = { [Op.like]: `%${dni}%` };
+    }
+
+    const players = await PlayerProfile.findAll({
+      where,
+      include: [
+        { model: Category, as: 'categoriaBase' },
+        { model: Locality, as: 'locality' }
+      ],
+      order: [['apellido', 'ASC'], ['nombre', 'ASC']]
+    });
+
+    return sendSuccess(res, players);
+  } catch (error) {
+    console.error('Get all players error:', error);
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: 'Error al obtener jugadores',
+      details: error.message
+    });
+  }
+};
+
+exports.getPlayerDetails = async (req, res) => {
+  try {
+    const { dni } = req.params;
+
+    const player = await PlayerProfile.findByPk(dni, {
+      include: [
+        { model: Category, as: 'categoriaBase' },
+        { model: Locality, as: 'locality' }
+      ]
+    });
+
+    if (!player) {
+      return sendNotFoundError(res, 'Jugador no encontrado');
+    }
+
+    // Buscar parejas donde participa el jugador
+    const teams = await Team.findAll({
+      where: {
+        [require('sequelize').Op.or]: [
+          { player1_dni: dni },
+          { player2_dni: dni }
+        ]
+      },
+      include: [
+        { model: PlayerProfile, as: 'player1', attributes: ['dni', 'nombre', 'apellido'] },
+        { model: PlayerProfile, as: 'player2', attributes: ['dni', 'nombre', 'apellido'] },
+        {
+          model: Registration,
+          as: 'registrations',
+          include: [
+            {
+              model: TournamentCategory,
+              as: 'tournamentCategory',
+              include: [
+                { model: Tournament, as: 'tournament' },
+                { model: Category, as: 'category' }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    return sendSuccess(res, {
+      player,
+      teams
+    });
+  } catch (error) {
+    console.error('Get player details error:', error);
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: 'Error al obtener detalles del jugador',
+      details: error.message
+    });
+  }
+};
+
+exports.updatePlayer = async (req, res) => {
+  try {
+    const { dni } = req.params;
+    const { nombre, apellido, telefono, categoria_base_id, genero, locality_id, activo } = req.body;
+
+    const player = await PlayerProfile.findByPk(dni);
+
+    if (!player) {
+      return sendNotFoundError(res, 'Jugador no encontrado');
+    }
+
+    if (nombre !== undefined) player.nombre = nombre;
+    if (apellido !== undefined) player.apellido = apellido;
+    if (telefono !== undefined) player.telefono = telefono;
+    if (categoria_base_id !== undefined) player.categoria_base_id = categoria_base_id;
+    if (genero !== undefined) player.genero = genero;
+    if (locality_id !== undefined) player.locality_id = locality_id;
+    if (activo !== undefined) player.activo = activo;
+
+    await player.save();
+
+    const updatedPlayer = await PlayerProfile.findByPk(dni, {
+      include: [
+        { model: Category, as: 'categoriaBase' },
+        { model: Locality, as: 'locality' }
+      ]
+    });
+
+    return sendSuccess(res, updatedPlayer);
+  } catch (error) {
+    console.error('Update player error:', error);
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: 'Error al actualizar jugador',
+      details: error.message
     });
   }
 };

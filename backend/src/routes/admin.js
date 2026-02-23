@@ -58,4 +58,8 @@ router.post('/points/assign', rankingController.assignPoints);
 router.get('/ranking', rankingController.getRanking);
 router.get('/ranking/player/:dni', rankingController.getPlayerPoints);
 
+router.get('/players', adminController.getAllPlayers);
+router.get('/players/:dni', adminController.getPlayerDetails);
+router.put('/players/:dni', adminController.updatePlayer);
+
 module.exports = router;
