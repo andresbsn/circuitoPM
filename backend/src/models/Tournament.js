@@ -9,7 +9,10 @@ const Tournament = sequelize.define('Tournament', {
   },
   nombre: {
     type: DataTypes.STRING(200),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('nombre', val ? val.toUpperCase() : val);
+    }
   },
   fecha_inicio: {
     type: DataTypes.DATE,

@@ -8,11 +8,17 @@ const PlayerProfile = sequelize.define('PlayerProfile', {
   },
   nombre: {
     type: DataTypes.STRING(100),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('nombre', val ? val.toUpperCase() : val);
+    }
   },
   apellido: {
     type: DataTypes.STRING(100),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('apellido', val ? val.toUpperCase() : val);
+    }
   },
   telefono: {
     type: DataTypes.STRING(20),

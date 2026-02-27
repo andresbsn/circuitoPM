@@ -13,7 +13,10 @@ const Zone = sequelize.define('Zone', {
   },
   name: {
     type: DataTypes.STRING(50),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('name', val ? val.toUpperCase() : val);
+    }
   },
   order_index: {
     type: DataTypes.INTEGER,

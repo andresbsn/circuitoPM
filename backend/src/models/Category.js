@@ -9,7 +9,10 @@ const Category = sequelize.define('Category', {
   },
   name: {
     type: DataTypes.STRING(50),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('name', val ? val.toUpperCase() : val);
+    }
   },
   rank: {
     type: DataTypes.INTEGER,

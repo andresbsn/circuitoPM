@@ -9,7 +9,10 @@ const Locality = sequelize.define('Locality', {
   },
   name: {
     type: DataTypes.STRING(100),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('name', val ? val.toUpperCase() : val);
+    }
   },
   province: {
     type: DataTypes.STRING(100),

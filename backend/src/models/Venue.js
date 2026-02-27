@@ -9,7 +9,10 @@ const Venue = sequelize.define('Venue', {
   },
   name: {
     type: DataTypes.STRING(200),
-    allowNull: false
+    allowNull: false,
+    set(val) {
+      this.setDataValue('name', val ? val.toUpperCase() : val);
+    }
   },
   address: {
     type: DataTypes.STRING(300),
