@@ -254,13 +254,16 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
             match.away_source_position = seededTeams[awayIndex].position;
           }
 
-          // Solo marcar como bye si hay un equipo definido y el otro slot está vacío (null en seededTeams)
-          if (match.team_home_id && !seededTeams[awayIndex]) {
+          // Marcar como bye si un lado tiene origen y el otro NO (ni equipo ni zona)
+          const homeHasSource = seededTeams[homeIndex];
+          const awayHasSource = seededTeams[awayIndex];
+
+          if (homeHasSource && !awayHasSource) {
             match.status = 'bye';
-            match.winner_team_id = match.team_home_id;
-          } else if (match.team_away_id && !seededTeams[homeIndex]) {
+            if (match.team_home_id) match.winner_team_id = match.team_home_id;
+          } else if (awayHasSource && !homeHasSource) {
             match.status = 'bye';
-            match.winner_team_id = match.team_away_id;
+            if (match.team_away_id) match.winner_team_id = match.team_away_id;
           }
         }
 
@@ -456,6 +459,35 @@ function generateCrossings(qualifiedTeams) {
   return bracketSlots;
 }
 
+/**
+ * Determina si un partido eventualmente tendrá un ganador.
+ * Un partido tendrá ganador si al menos una de sus ramas tiene una zona de origen (no es un BYE absoluto).
+ */
+async function willMatchHaveWinner(match, transaction) {
+  // Si ya tiene un ganador, es obvio que tiene ganador
+  if (match.winner_team_id) return true;
+
+  if (match.round_number === 1) {
+    // En ronda 1, tiene ganador si hay al menos una zona de origen
+    return !!(match.home_source_zone_id || match.away_source_zone_id);
+  }
+
+  // En rondas superiores, tiene ganador si al menos uno de sus partidos padres tiene ganador
+  const { Match } = require('../models');
+  const parents = await Match.findAll({
+    where: { next_match_id: match.id },
+    transaction
+  });
+
+  if (parents.length === 0) return false;
+
+  for (const parent of parents) {
+    if (await willMatchHaveWinner(parent, transaction)) return true;
+  }
+
+  return false;
+}
+
 async function advanceWinnerToNextMatch(matchId, transaction) {
   const match = await Match.findByPk(matchId, { transaction });
 
@@ -471,17 +503,44 @@ async function advanceWinnerToNextMatch(matchId, transaction) {
     nextMatch.team_away_id = match.winner_team_id;
   }
 
-  if (nextMatch.team_home_id && !nextMatch.team_away_id) {
+  // A match becomes a BYE if it has one team and the other side will NEVER have a team.
+  const otherSlot = match.next_match_slot === 'home' ? 'away' : 'home';
+  const otherTeamId = otherSlot === 'home' ? nextMatch.team_home_id : nextMatch.team_away_id;
+
+  let isOtherSlotBye = false;
+
+  if (!otherTeamId) {
+    if (nextMatch.round_number === 1) {
+      // Ronda 1: verificamos si el otro slot tiene zona de origen
+      const otherSourceZoneId = otherSlot === 'home' ? nextMatch.home_source_zone_id : nextMatch.away_source_zone_id;
+      if (!otherSourceZoneId) {
+        isOtherSlotBye = true;
+      }
+    } else {
+      // Rondas posteriores: verificamos si el partido que alimenta el otro slot tendrá ganador
+      const parentOfOther = await Match.findOne({
+        where: {
+          next_match_id: nextMatch.id,
+          next_match_slot: otherSlot
+        },
+        transaction
+      });
+
+      // Si no hay partido padre, o el partido padre nunca tendrá ganador, es un BYE
+      if (!parentOfOther || !(await willMatchHaveWinner(parentOfOther, transaction))) {
+        isOtherSlotBye = true;
+      }
+    }
+  }
+
+  if (isOtherSlotBye) {
     nextMatch.status = 'bye';
-    nextMatch.winner_team_id = nextMatch.team_home_id;
+    nextMatch.winner_team_id = match.winner_team_id;
     await nextMatch.save({ transaction });
-    await advanceWinnerToNextMatch(nextMatch.id, transaction);
-  } else if (!nextMatch.team_home_id && nextMatch.team_away_id) {
-    nextMatch.status = 'bye';
-    nextMatch.winner_team_id = nextMatch.team_away_id;
-    await nextMatch.save({ transaction });
+    // Propagate further if needed
     await advanceWinnerToNextMatch(nextMatch.id, transaction);
   } else {
+    // Just save the team progression
     await nextMatch.save({ transaction });
   }
 }

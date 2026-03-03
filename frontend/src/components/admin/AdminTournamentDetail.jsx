@@ -577,14 +577,21 @@ export default function AdminTournamentDetail() {
     }
   }
 
-  const openResultModal = (match, isZone = false, format = 'BEST_OF_3_SUPER_TB') => {
+  const openResultModal = (match, isZone = false) => {
+    const currentCategoryObj = tournament?.categories?.find(c => c.id === parseInt(selectedCategory));
+    const format = currentCategoryObj?.match_format || 'BEST_OF_3_SUPER_TB';
+    
     setEditingMatch({ ...match, isZone, format })
+    // Iniciar con 2 sets vacíos
     setScoreInput({ sets: [{ home: '', away: '' }, { home: '', away: '' }] })
     setShowResultModal(true)
   }
 
   const addSet = () => {
-    setScoreInput({ sets: [...scoreInput.sets, { home: '', away: '' }] })
+    const isSuperTB = editingMatch.format === 'BEST_OF_3_SUPER_TB' && scoreInput.sets.length === 2;
+    setScoreInput({ 
+      sets: [...scoreInput.sets, { home: '', away: '', type: isSuperTB ? 'SUPER_TB' : undefined }] 
+    })
   }
 
   const getPlayoffTeamLabel = (match, side) => {
@@ -1041,7 +1048,9 @@ export default function AdminTournamentDetail() {
                     <div className="text-right space-y-2">
                       {match.status === 'played' ? (
                         <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
-                      ) : match.team_home_id && match.team_away_id ? (
+                      ) : match.status === 'bye' ? (
+                        <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800 text-center block">BYE</span>
+                      ) : (
                         <>
                           <button
                             onClick={() => openScheduleModal(match, false)}
@@ -1049,15 +1058,15 @@ export default function AdminTournamentDetail() {
                           >
                             Programar
                           </button>
-                          <button
-                            onClick={() => openResultModal(match, false)}
-                            className="block w-full text-sm bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700"
-                          >
-                            Cargar Resultado
-                          </button>
+                          {match.team_home_id && match.team_away_id && (
+                            <button
+                              onClick={() => openResultModal(match, false)}
+                              className="block w-full text-sm bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700"
+                            >
+                              Cargar Resultado
+                            </button>
+                          )}
                         </>
-                      ) : (
-                        <span className="text-xs text-gray-400">Esperando equipos</span>
                       )}
                     </div>
                   </div>
@@ -1218,7 +1227,9 @@ export default function AdminTournamentDetail() {
           {scoreInput.sets.map((set, idx) => (
             <div key={idx} className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Set {idx + 1} - Local</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {set.type === 'SUPER_TB' ? 'Super Tie-break' : `Set ${idx + 1}`} - Local
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -1233,7 +1244,9 @@ export default function AdminTournamentDetail() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Set {idx + 1} - Visitante</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {set.type === 'SUPER_TB' ? 'Super Tie-break' : `Set ${idx + 1}`} - Visitante
+                </label>
                 <input
                   type="number"
                   min="0"

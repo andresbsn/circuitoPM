@@ -85,7 +85,13 @@ export default function TournamentView() {
 
     const sourceMatch = playoffs?.matches?.find(m => m.next_match_id === match.id && m.next_match_slot === side)
     if (sourceMatch) {
-      return `Ganador Partido ${sourceMatch.match_number}`
+      let roundPrefix = 'Partido'
+      const rName = (sourceMatch.round_name || '').toLowerCase()
+      if (rName.includes('octavos')) roundPrefix = 'Oct'
+      else if (rName.includes('cuartos')) roundPrefix = 'Cuartos'
+      else if (rName.includes('semi')) roundPrefix = 'Semi'
+      
+      return `Ganador ${roundPrefix} ${sourceMatch.match_number}`
     }
 
     return 'TBD'
@@ -301,53 +307,161 @@ export default function TournamentView() {
         )}
 
         {activeTab === 'playoffs' && (
-          <div>
+          <div className="bg-white rounded-lg shadow-xl p-8 overflow-hidden">
             {!playoffs ? (
-              <p className="text-gray-500">No hay playoffs generados aún</p>
+              <p className="text-center text-gray-500 py-10">No hay playoffs generados aún</p>
             ) : (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Cuadro de Playoffs</h3>
-                <div className="overflow-x-auto">
-                  {Object.entries(
-                    playoffs.matches.reduce((acc, match) => {
-                      if (!acc[match.round_name]) acc[match.round_name] = []
-                      acc[match.round_name].push(match)
-                      return acc
-                    }, {})
-                  ).map(([roundName, matches]) => (
-                    <div key={roundName} className="mb-6">
-                      <h4 className="text-md font-semibold text-gray-800 mb-3">{roundName}</h4>
-                      <div className="space-y-3">
-                        {matches.map(match => (
-                          <div key={match.id} className="border rounded-lg p-4">
-                            <div className="space-y-2">
-                              <div className={`flex justify-between items-center ${match.winner_team_id === match.team_home_id ? 'font-semibold' : ''}`}>
-                                <span className="text-sm">
-                                  {getPlayoffTeamLabel(match, 'home')}
-                                </span>
-                                {match.status === 'played' && match.winner_team_id === match.team_home_id && <span className="text-green-600">✓</span>}
+              <div className="relative">
+                <div className="flex gap-12 pb-10 overflow-x-auto min-h-[600px] scrollbar-hide">
+                  {(() => {
+                    const rounds = [];
+                    // Agrupar y ordenar matches por ronda
+                    const sortedMatches = [...playoffs.matches].sort((a, b) => {
+                      if (a.round_number !== b.round_number) return a.round_number - b.round_number;
+                      return a.match_number - b.match_number;
+                    });
+
+                    sortedMatches.forEach(match => {
+                      let round = rounds.find(r => r.number === match.round_number);
+                      if (!round) {
+                        round = { number: match.round_number, name: match.round_name, matches: [] };
+                        rounds.push(round);
+                      }
+                      round.matches.push(match);
+                    });
+
+                    return rounds.map((round, roundIdx) => (
+                      <div key={round.number} className="flex flex-col min-w-[280px] relative">
+                        {/* Título de la Ronda */}
+                        <div className="text-center mb-8">
+                          <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-50 py-2 rounded-full border border-gray-100">
+                            {round.name}
+                          </h4>
+                        </div>
+                        
+                        {/* Contenedor de Matches */}
+                        <div className="flex-1 flex flex-col justify-around py-4">
+                          {round.matches.map((match, matchIdx) => (
+                            <div key={match.id} className="relative group">
+                              {/* La "caja" del partido */}
+                              <div className={`
+                                relative z-10 bg-white border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
+                                ${match.status === 'played' ? 'border-primary-100' : 'border-gray-200'}
+                                group-hover:shadow-md group-hover:border-primary-300
+                              `}>
+                                {/* Equipo 1 (Home) */}
+                                <div className={`
+                                  flex justify-between items-center p-3 border-b border-gray-100
+                                  ${match.winner_team_id === match.team_home_id ? 'bg-primary-50' : ''}
+                                `}>
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="text-[10px] font-bold text-gray-400 w-4">
+                                      {match.home_source_position || ''}
+                                    </span>
+                                    <span className={`text-[11px] truncate ${match.winner_team_id === match.team_home_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
+                                      {getPlayoffTeamLabel(match, 'home')}
+                                    </span>
+                                  </div>
+                                  {match.status === 'played' && match.score_json?.sets && (
+                                    <span className="text-xs font-mono font-bold text-primary-600 ml-2">
+                                      {match.score_json.sets[0]?.home} {match.score_json.sets[1]?.home} {match.score_json.sets[2]?.home}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Equipo 2 (Away) */}
+                                <div className={`
+                                  flex justify-between items-center p-3
+                                  ${match.winner_team_id === match.team_away_id ? 'bg-primary-50' : ''}
+                                `}>
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="text-[10px] font-bold text-gray-400 w-4">
+                                      {match.away_source_position || ''}
+                                    </span>
+                                    <span className={`text-[11px] truncate ${match.winner_team_id === match.team_away_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
+                                      {getPlayoffTeamLabel(match, 'away')}
+                                    </span>
+                                  </div>
+                                  {match.status === 'played' && match.score_json?.sets && (
+                                    <span className="text-xs font-mono font-bold text-primary-600 ml-2">
+                                      {match.score_json.sets[0]?.away} {match.score_json.sets[1]?.away} {match.score_json.sets[2]?.away}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Información de Programación */}
+                                {(match.scheduled_at || match.venue) && match.status !== 'played' && match.status !== 'bye' && (
+                                  <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex flex-wrap gap-x-3 gap-y-1">
+                                    {match.scheduled_at && (
+                                      <div className="flex items-center text-[10px] text-gray-500 font-medium">
+                                        <span className="mr-1">📅</span>
+                                        {new Date(match.scheduled_at).toLocaleString('es-AR', { 
+                                          day: '2-digit', 
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          hour12: false
+                                        })}
+                                      </div>
+                                    )}
+                                    {match.venue && (
+                                      <div className="flex items-center text-[10px] text-gray-500 font-medium truncate max-w-[150px]">
+                                        <span className="mr-1">📍</span>
+                                        {match.venue}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              <div className={`flex justify-between items-center ${match.winner_team_id === match.team_away_id ? 'font-semibold' : ''}`}>
-                                <span className="text-sm">
-                                  {getPlayoffTeamLabel(match, 'away')}
-                                </span>
-                                {match.status === 'played' && match.winner_team_id === match.team_away_id && <span className="text-green-600">✓</span>}
-                              </div>
+
+                              {/* Información Extra (BYE / Pendiente) */}
+                              {match.status === 'bye' && (
+                                <div className="absolute -bottom-5 right-0 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">BYE</div>
+                              )}
+
+                              {/* CONECTORES (Líneas) - No se muestran en la última ronda */}
+                              {roundIdx < rounds.length - 1 && (
+                                <div 
+                                  className={`absolute top-1/2 -right-12 w-12 h-[2px] bg-gray-200 z-0 transition-colors duration-300 group-hover:bg-primary-300`}
+                                  style={{
+                                    /* El conector vertical se maneja por CSS o se puede aproximar aquí */
+                                  }}
+                                />
+                              )}
+                              {roundIdx > 0 && (
+                                <div className="absolute top-1/2 -left-12 w-12 h-[2px] bg-gray-200 z-0" />
+                              )}
                             </div>
-                            {match.status === 'played' && (
-                              <p className="text-xs text-gray-500 mt-2">{formatScore(match.score_json)}</p>
-                            )}
-                            {match.status === 'bye' && (
-                              <p className="text-xs text-gray-500 mt-2">BYE</p>
-                            )}
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+
+                        {/* Etiquetas de pie de columna si es necesario */}
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
+                  
+                  {/* Columna de Campeón (opcional) */}
+                  {(() => {
+                    const lastMatch = playoffs.matches[playoffs.matches.length - 1];
+                    if (lastMatch?.status === 'played' && lastMatch?.winnerTeamId) {
+                       // Podríamos agregar una columna de "Campeón"
+                    }
+                  })()}
                 </div>
               </div>
             )}
+            
+            {/* Leyenda en el fondo */}
+            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-primary-50 border border-primary-200 rounded"></div>
+                <span className="text-xs text-gray-500">Ganador del partido</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-white border border-gray-200 rounded"></div>
+                <span className="text-xs text-gray-500">Pendiente</span>
+              </div>
+            </div>
           </div>
         )}
       </div>

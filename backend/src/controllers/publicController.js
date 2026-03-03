@@ -138,6 +138,10 @@ exports.getPlayoffs = async (req, res) => {
           as: 'matches',
           include: includeMatchTeams()
         }
+      ],
+      order: [
+        [{ model: Match, as: 'matches' }, 'round_number', 'ASC'],
+        [{ model: Match, as: 'matches' }, 'match_number', 'ASC']
       ]
     });
 

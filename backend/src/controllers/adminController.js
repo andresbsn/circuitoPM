@@ -987,6 +987,10 @@ exports.generatePlayoffs = async (req, res) => {
           as: 'matches',
           include: includeMatchTeams()
         }
+      ],
+      order: [
+        [{ model: Match, as: 'matches' }, 'round_number', 'ASC'],
+        [{ model: Match, as: 'matches' }, 'match_number', 'ASC']
       ]
     });
 
@@ -1043,7 +1047,13 @@ exports.generatePlayoffsManual = async (req, res) => {
     const { bracket, isNew } = await generateBracketManual(tournament_category_id, seededTeams, force || false);
 
     const result = await Bracket.findByPk(bracket.id, {
-      include: [{ model: Match, as: 'matches', include: includeMatchTeams() }]
+      include: [
+        { model: Match, as: 'matches', include: includeMatchTeams() }
+      ],
+      order: [
+        [{ model: Match, as: 'matches' }, 'round_number', 'ASC'],
+        [{ model: Match, as: 'matches' }, 'match_number', 'ASC']
+      ]
     });
 
     return sendSuccess(res, { bracket: result, isNew }, isNew ? 201 : 200);
@@ -1137,25 +1147,33 @@ exports.updateMatchResult = async (req, res) => {
 exports.updateMatchSchedule = async (req, res) => {
   try {
     const { id } = req.params;
-    const { scheduled_at } = req.body;
+    const { scheduled_at, venue } = req.body;
 
     const match = await Match.findByPk(id);
     if (!match) {
-      return res.status(404).json({
-        ok: false,
-        error: { code: 'NOT_FOUND', message: 'Partido no encontrado' }
-      });
+      return sendNotFoundError(res, 'Partido no encontrado');
     }
 
-    match.scheduled_at = scheduled_at;
+    if (scheduled_at !== undefined) {
+      match.scheduled_at = scheduled_at ? new Date(scheduled_at) : null;
+    }
+    if (venue !== undefined) {
+      match.venue = venue;
+    }
+
     await match.save();
 
-    return res.json({ ok: true, data: match });
+    const updatedMatch = await Match.findByPk(id, {
+      include: includeMatchTeams()
+    });
+
+    return sendSuccess(res, updatedMatch);
   } catch (error) {
     console.error('Update match schedule error:', error);
-    return res.status(500).json({
-      ok: false,
-      error: { code: 'SERVER_ERROR', message: 'Error al actualizar horario', details: error.message }
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: 'Error al actualizar horario',
+      details: error.message
     });
   }
 };

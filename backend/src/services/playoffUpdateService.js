@@ -4,7 +4,8 @@ const { Op } = require('sequelize');
 async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
   try {
     // 1. Verificar si la zona ha finalizado TODOS sus partidos
-    // Si quedan partidos pendientes, NO actualizamos los playoffs para evitar cruces prematuros.
+    // Solo actualizamos las parejas en el cuadro de playoffs cuando la zona está terminada
+    // y las posiciones son definitivas.
     const totalZoneMatches = await ZoneMatch.count({
       where: { zone_id: zoneId },
       transaction
@@ -19,7 +20,7 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
     });
 
     if (totalZoneMatches === 0 || playedZoneMatches < totalZoneMatches) {
-      // Zona no finalizada. No hacemos nada.
+      // Zona no finalizada. No hacemos nada con las parejas de playoffs todavía.
       return;
     }
 
@@ -45,7 +46,7 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
       return; // No hay playoffs generados aún
     }
 
-    // Obtener los standings actuales de la zona
+    // Obtener los standings finales de la zona
     const standings = await ZoneStanding.findAll({
       where: { zone_id: zoneId },
       order: [
@@ -111,6 +112,20 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
         // Caso 2: Se llenó Away, Home es null y no tiene source
         else if (match.team_away_id && !match.team_home_id && !match.home_source_zone_id && match.status !== 'bye') {
           match.status = 'bye';
+          match.winner_team_id = match.team_away_id;
+          await match.save({ transaction });
+          const { advanceWinnerToNextMatch } = require('./bracketService');
+          await advanceWinnerToNextMatch(match.id, transaction);
+        }
+        // Caso 3: Ya es un BYE pero se actualizó el equipo (Home)
+        else if (match.status === 'bye' && match.team_home_id && match.winner_team_id !== match.team_home_id && !match.away_source_zone_id) {
+          match.winner_team_id = match.team_home_id;
+          await match.save({ transaction });
+          const { advanceWinnerToNextMatch } = require('./bracketService');
+          await advanceWinnerToNextMatch(match.id, transaction);
+        }
+        // Caso 4: Ya es un BYE pero se actualizó el equipo (Away)
+        else if (match.status === 'bye' && match.team_away_id && match.winner_team_id !== match.team_away_id && !match.home_source_zone_id) {
           match.winner_team_id = match.team_away_id;
           await match.save({ transaction });
           const { advanceWinnerToNextMatch } = require('./bracketService');
