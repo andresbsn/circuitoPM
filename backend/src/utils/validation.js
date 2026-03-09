@@ -1,4 +1,4 @@
-const { PlayerProfile, Category, Team, Registration, TournamentCategory } = require('../models');
+const { PlayerProfile, Category, Team, Registration, TournamentCategory, Tournament } = require('../models');
 
 async function validateCategoryEligibility(playerDni, tournamentCategoryId) {
   const player = await PlayerProfile.findByPk(playerDni, {
@@ -20,22 +20,36 @@ async function validateCategoryEligibility(playerDni, tournamentCategoryId) {
   // Validar Género
   const categoryGender = tournamentCategory.category.gender;
   const playerGender = player.genero;
+  let effectiveBaseRank = player.categoriaBase.rank;
 
-  if (categoryGender === 'caballeros' && playerGender !== 'M') {
-    return { valid: false, error: `Esta categoría es de Caballeros, el jugador es Femenino` };
-  }
-
+  // Regla: Caballeros pueden jugar solo Caballeros
+  // Damas pueden jugar Damas O Caballeros (con ajuste de handicap)
+  
   if (categoryGender === 'damas' && playerGender !== 'F') {
     return { valid: false, error: `Esta categoría es de Damas, el jugador es Masculino` };
   }
 
-  const baseRank = player.categoriaBase.rank;
+  if (categoryGender === 'caballeros') {
+    if (playerGender === 'F') {
+      // Ajuste de nivel para Damas jugando Caballeros: +2 categorías
+      // Ejemplo: Dama 5ta (rank 5) -> Equivale a Caballero 7ma (rank 7)
+      // Puede jugar 7ma (su nivel ajustado) o 6ta (una superior)
+      // No puede jugar 8va (sería 3 categorías menor a su base original, o 1 menor a su ajustada)
+      effectiveBaseRank = effectiveBaseRank + 2;
+    }
+    // Si es M, usa su rank normal
+  }
+
   const tournamentRank = tournamentCategory.category.rank;
 
-  if (tournamentRank < baseRank - 1 || tournamentRank > baseRank) {
+  if (tournamentRank < effectiveBaseRank - 1 || tournamentRank > effectiveBaseRank) {
+    const errorDetail = playerGender === 'F' && categoryGender === 'caballeros' 
+      ? `(ajustado +2 por jugar en Caballeros)` 
+      : '';
+
     return {
       valid: false,
-      error: `El jugador solo puede jugar en su categoría base (${player.categoriaBase.name}) o una categoría superior (rank ${baseRank - 1})`
+      error: `El jugador es categoría ${player.categoriaBase.rank} ${errorDetail}, por lo que juega como Rank ${effectiveBaseRank}. Solo puede jugar en categorías ${effectiveBaseRank} o ${effectiveBaseRank - 1}. Categoría torneo: ${tournamentRank}`
     };
   }
 
@@ -94,7 +108,18 @@ async function validateRegistration(teamId, tournamentCategoryId) {
     return { valid: false, error: 'La pareja ya está inscripta en esta categoría' };
   }
 
-  const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId);
+  const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, {
+    include: [{ model: Tournament, as: 'tournament' }]
+  });
+
+  if (!tournamentCategory) {
+    return { valid: false, error: 'Categoría de torneo no encontrada' };
+  }
+
+  if (tournamentCategory.tournament.estado !== 'inscripcion') {
+    return { valid: false, error: 'El torneo no se encuentra en etapa de inscripción' };
+  }
+
   if (!tournamentCategory.inscripcion_abierta) {
     return { valid: false, error: 'Las inscripciones están cerradas para esta categoría' };
   }

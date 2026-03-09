@@ -198,7 +198,7 @@ export default function PlayerDashboard() {
                                <span className="text-sm font-medium text-gray-700">
                                  {tc.category.name} <span className="text-xs text-gray-500 font-normal">({tc.category.gender})</span>
                                </span>
-                               {tc.inscripcion_abierta ? (
+                               {tc.inscripcion_abierta && tournament.estado === 'inscripcion' ? (
                                  <button
                                    onClick={() => openEnrollModal(tc)}
                                    className="px-3 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-primary-700 transition-colors focus:ring-2 focus:ring-primary-500 focus:ring-offset-1"
@@ -206,7 +206,9 @@ export default function PlayerDashboard() {
                                    Inscribirse
                                  </button>
                                ) : (
-                                 <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded">Cerrado</span>
+                                 <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded">
+                                   {tournament.estado === 'inscripcion' ? 'Cerrado' : 'No disponible'}
+                                 </span>
                                )}
                              </div>
                            ))}
