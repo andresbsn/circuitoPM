@@ -191,7 +191,8 @@ export default function TournamentView() {
                   <div className="px-6 py-4 bg-gray-50 border-b">
                     <h3 className="text-lg font-semibold text-gray-900">{zone.name}</h3>
                   </div>
-                  <div className="overflow-x-auto">
+                  {/* Desktop View (Table) */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
@@ -222,6 +223,59 @@ export default function TournamentView() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Mobile View (Cards) */}
+                  <div className="md:hidden">
+                    <div className="divide-y divide-gray-100">
+                      {zone.standings?.map((standing, idx) => (
+                        <div key={standing.id} className="p-4 bg-white">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`
+                                w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold
+                                ${idx === 0 ? 'bg-yellow-100 text-yellow-800' : 
+                                  idx === 1 ? 'bg-gray-100 text-gray-800' :
+                                  idx === 2 ? 'bg-orange-100 text-orange-800' : 'bg-slate-100 text-slate-600'}
+                              `}>
+                                {idx + 1}
+                              </div>
+                              <div className="text-sm font-medium text-gray-900 leading-tight">
+                                <div className="mb-0.5">{standing.team.player1.nombre} {standing.team.player1.apellido}</div>
+                                <div>{standing.team.player2.nombre} {standing.team.player2.apellido}</div>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center bg-gray-50 px-3 py-1 rounded min-w-[3.5rem]">
+                              <span className="text-[10px] text-gray-500 uppercase font-bold">Pts</span>
+                              <span className="text-lg font-bold text-gray-900">{standing.points}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-5 gap-2 text-center text-xs border-t border-gray-100 pt-3">
+                            <div>
+                              <div className="text-gray-400 mb-1">PJ</div>
+                              <div className="font-medium text-gray-700">{standing.played}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 mb-1">PG</div>
+                              <div className="font-medium text-green-600">{standing.wins}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 mb-1">PP</div>
+                              <div className="font-medium text-red-500">{standing.losses}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 mb-1">Sets</div>
+                              <div className="font-medium text-gray-700">{standing.sets_diff > 0 ? '+' : ''}{standing.sets_diff}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 mb-1">Games</div>
+                              <div className="font-medium text-gray-700">{standing.games_diff > 0 ? '+' : ''}{standing.games_diff}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))

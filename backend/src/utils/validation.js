@@ -10,7 +10,10 @@ async function validateCategoryEligibility(playerDni, tournamentCategoryId) {
   }
 
   const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, {
-    include: [{ model: Category, as: 'category' }]
+    include: [
+      { model: Category, as: 'category' },
+      { model: Tournament, as: 'tournament' }
+    ]
   });
 
   if (!tournamentCategory) {
@@ -31,6 +34,11 @@ async function validateCategoryEligibility(playerDni, tournamentCategoryId) {
 
   if (categoryGender === 'caballeros') {
     if (playerGender === 'F') {
+      // EXCEPCION: Si el torneo está en etapa de inscripción, las Damas no tienen restricción de rank en Caballeros
+      if (tournamentCategory.tournament && tournamentCategory.tournament.estado === 'inscripcion') {
+        return { valid: true };
+      }
+
       // Ajuste de nivel para Damas jugando Caballeros: +2 categorías
       // Ejemplo: Dama 5ta (rank 5) -> Equivale a Caballero 7ma (rank 7)
       // Puede jugar 7ma (su nivel ajustado) o 6ta (una superior)
