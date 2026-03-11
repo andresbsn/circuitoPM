@@ -321,23 +321,32 @@ exports.getRegistrations = async (req, res) => {
     const { tournamentId, categoryId, tournamentCategoryId } = req.query;
 
     const where = {};
+    const include = [
+      includeTournamentCategory(),
+      includeTeamWithPlayers()
+    ];
+
     if (tournamentCategoryId) {
       where.tournament_category_id = tournamentCategoryId;
-    } else if (tournamentId && categoryId) {
-      const tournamentCategory = await TournamentCategory.findOne({
-        where: { tournament_id: tournamentId, category_id: categoryId }
-      });
-      if (tournamentCategory) {
-        where.tournament_category_id = tournamentCategory.id;
+    } else if (tournamentId) {
+      // If we have tournamentId, we need to filter inside the include
+      // However, includeTournamentCategory returns a complex include structure.
+      // We need to modify it or add a where clause to it.
+      // Since includeTournamentCategory() returns an object, we can modify it.
+      const tcInclude = includeTournamentCategory();
+      tcInclude.where = { tournament_id: tournamentId };
+      
+      if (categoryId) {
+        tcInclude.where.category_id = categoryId;
       }
+      
+      // Replace the first include with our modified one
+      include[0] = tcInclude;
     }
 
     const registrations = await Registration.findAll({
       where,
-      include: [
-        includeTournamentCategory(),
-        includeTeamWithPlayers()
-      ],
+      include,
       order: [['created_at', 'DESC']]
     });
 

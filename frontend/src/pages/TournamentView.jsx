@@ -416,11 +416,6 @@ export default function TournamentView() {
                                       {getPlayoffTeamLabel(match, 'home')}
                                     </span>
                                   </div>
-                                  {match.status === 'played' && match.score_json?.sets && (
-                                    <span className="text-xs font-mono font-bold text-primary-600 ml-2">
-                                      {match.score_json.sets[0]?.home} {match.score_json.sets[1]?.home} {match.score_json.sets[2]?.home}
-                                    </span>
-                                  )}
                                 </div>
 
                                 {/* Equipo 2 (Away) */}
@@ -436,11 +431,6 @@ export default function TournamentView() {
                                       {getPlayoffTeamLabel(match, 'away')}
                                     </span>
                                   </div>
-                                  {match.status === 'played' && match.score_json?.sets && (
-                                    <span className="text-xs font-mono font-bold text-primary-600 ml-2">
-                                      {match.score_json.sets[0]?.away} {match.score_json.sets[1]?.away} {match.score_json.sets[2]?.away}
-                                    </span>
-                                  )}
                                 </div>
 
                                 {/* Información de Programación */}
@@ -464,6 +454,15 @@ export default function TournamentView() {
                                         {match.venue}
                                       </div>
                                     )}
+                                  </div>
+                                )}
+
+                                {/* Resultado del Partido (Reemplaza programación cuando está jugado) */}
+                                {match.status === 'played' && (
+                                  <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-gray-900">
+                                      {formatScore(match.score_json)}
+                                    </span>
                                   </div>
                                 )}
                               </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import api from '../../services/api'
 import Modal from '../Modal'
 import Toast from '../Toast'
@@ -562,7 +563,12 @@ export default function AdminTournamentDetail() {
         ? `/api/admin/zone-matches/${editingMatch.id}/result`
         : `/api/admin/matches/${editingMatch.id}/result`
       
-      const response = await api.patch(endpoint, { score_json })
+      const payload = { score_json }
+      if (editingMatch.status === 'played') {
+        payload.force_override = true
+      }
+      
+      const response = await api.patch(endpoint, payload)
       if (response.data.ok) {
         setToast({ message: 'Resultado actualizado', type: 'success' })
         setShowResultModal(false)
@@ -582,8 +588,19 @@ export default function AdminTournamentDetail() {
     const format = currentCategoryObj?.match_format || 'BEST_OF_3_SUPER_TB';
     
     setEditingMatch({ ...match, isZone, format })
-    // Iniciar con 2 sets vacíos
-    setScoreInput({ sets: [{ home: '', away: '' }, { home: '', away: '' }] })
+    
+    if (match.score_json && match.score_json.sets) {
+      setScoreInput({
+        sets: match.score_json.sets.map(s => ({
+          home: s.home,
+          away: s.away,
+          type: s.type
+        }))
+      })
+    } else {
+      // Iniciar con 2 sets vacíos
+      setScoreInput({ sets: [{ home: '', away: '' }, { home: '', away: '' }] })
+    }
     setShowResultModal(true)
   }
 
@@ -633,6 +650,49 @@ export default function AdminTournamentDetail() {
     }
 
     return 'TBD'
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      setLoading(true)
+      const response = await api.get(`/api/admin/registrations?tournamentId=${id}`)
+      if (response.data.ok) {
+        const allRegistrations = response.data.data
+        
+        // Prepare data for Excel
+        const data = allRegistrations.map(reg => ({
+          'Categoría': reg.tournamentCategory?.category?.name || 'Desconocida',
+          'Pareja': `${reg.team.player1.nombre} ${reg.team.player1.apellido} / ${reg.team.player2.nombre} ${reg.team.player2.apellido}`,
+          'Problemas de Horario': reg.schedule_problems || 'Ninguno',
+          'Estado': reg.estado
+        }))
+
+        // Sort by Category
+        data.sort((a, b) => a['Categoría'].localeCompare(b['Categoría']))
+
+        const ws = XLSX.utils.json_to_sheet(data)
+        
+        // Adjust column widths
+        const wscols = [
+          { wch: 20 }, // Categoría
+          { wch: 40 }, // Pareja
+          { wch: 40 }, // Problemas de Horario
+          { wch: 15 }  // Estado
+        ];
+        ws['!cols'] = wscols;
+
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "Inscripciones")
+        XLSX.writeFile(wb, `Inscripciones_${tournament.nombre.replace(/\s+/g, '_')}.xlsx`)
+        
+        setToast({ message: 'Exportación exitosa', type: 'success' })
+      }
+    } catch (error) {
+      console.error('Error exporting:', error)
+      setToast({ message: 'Error al exportar', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!tournament) {
@@ -766,12 +826,20 @@ export default function AdminTournamentDetail() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Inscripciones ({registrations.length})</h3>
-            <button
-              onClick={openRegistrationModal}
-              className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
-            >
-              Inscribir Pareja
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={handleExportExcel}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+              >
+                Exportar Excel
+              </button>
+              <button
+                onClick={openRegistrationModal}
+                className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+              >
+                Inscribir Pareja
+              </button>
+            </div>
           </div>
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             {/* Desktop View - Table */}
@@ -952,10 +1020,10 @@ export default function AdminTournamentDetail() {
                     </div>
                     <div className="text-right space-y-2">
                       {match.status === 'played' ? (
-                        <>
+                        <div className="flex flex-col items-end gap-2">
                           <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
                           {match.score_json && match.score_json.sets && (
-                            <div className="mt-2 text-xs font-bold text-gray-800">
+                            <div className="text-xs font-bold text-gray-800">
                               {match.score_json.sets.map((s, idx) => (
                                 <span key={idx} className="mr-2">
                                   {s.home}-{s.away}
@@ -963,7 +1031,13 @@ export default function AdminTournamentDetail() {
                               ))}
                             </div>
                           )}
-                        </>
+                          <button
+                            onClick={() => openResultModal(match, true)}
+                            className="text-xs text-primary-600 hover:text-primary-800 underline"
+                          >
+                            Editar Resultado
+                          </button>
+                        </div>
                       ) : (
                         <>
                           <button
@@ -1047,7 +1121,24 @@ export default function AdminTournamentDetail() {
                     </div>
                     <div className="text-right space-y-2">
                       {match.status === 'played' ? (
-                        <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Jugado</span>
+                          {match.score_json && match.score_json.sets && (
+                            <div className="text-xs font-bold text-gray-800">
+                              {match.score_json.sets.map((s, idx) => (
+                                <span key={idx} className="mr-2">
+                                  {s.home}-{s.away}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => openResultModal(match, false)}
+                            className="text-xs text-primary-600 hover:text-primary-800 underline"
+                          >
+                            Editar Resultado
+                          </button>
+                        </div>
                       ) : match.status === 'bye' ? (
                         <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800 text-center block">BYE</span>
                       ) : (
