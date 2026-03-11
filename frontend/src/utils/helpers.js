@@ -16,8 +16,32 @@ export const formatDateTime = (dateString) => {
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Argentina/Buenos_Aires'
   })
+}
+
+export const formatDateForInput = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  // Get Argentina time parts
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  const parts = formatter.formatToParts(date)
+  const getPart = (type) => parts.find(p => p.type === type).value
+  
+  // en-GB parts: day, month, year, hour, minute
+  // We need YYYY-MM-DDTHH:mm
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}`
 }
 
 export const getPlayerFullName = (player) => {

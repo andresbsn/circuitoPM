@@ -1,4 +1,5 @@
-const { sequelize, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Registration, Team, PlayerProfile, Category, TournamentCategory } = require('../models');
+const { sequelize, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Registration, Team, PlayerProfile, Category, TournamentCategory, Match } = require('../models');
+const { Op } = require('sequelize');
 
 function shuffleArray(array, seed) {
   const arr = [...array];
@@ -67,52 +68,195 @@ function generateRoundRobinFixture(teams) {
   return fixtures;
 }
 
+async function validateAndClearZones(tournamentCategoryId, force, transaction) {
+  const existingZones = await Zone.findAll({
+    where: { tournament_category_id: tournamentCategoryId },
+    transaction
+  });
+
+  if (existingZones.length > 0) {
+    const hasMatches = await ZoneMatch.count({
+      where: { zone_id: existingZones.map(z => z.id), status: 'played' },
+      transaction
+    });
+
+    if (hasMatches > 0 && !force) {
+      throw new Error('No se pueden regenerar las zonas porque ya hay partidos jugados. Use force=true para forzar la regeneración.');
+    }
+
+    if (!force) {
+      // If we are here, it means we have zones but no matches played, 
+      // but without force we shouldn't overwrite unless explicitly requested?
+      // The original logic returned { isNew: false } here to indicate no change.
+      // But for manual generation we typically want to error if not forced.
+      // Let's return false to indicate "did not clear".
+      return false;
+    }
+
+    const zoneIds = existingZones.map(z => z.id);
+
+    // Check for Bracket Matches referencing these zones
+    // If we destroy zones, we must nullify references in Matches to avoid FK constraints
+    const matchesRef = await Match.count({
+      where: {
+        [Op.or]: [
+          { home_source_zone_id: zoneIds },
+          { away_source_zone_id: zoneIds }
+        ]
+      },
+      transaction
+    });
+
+    if (matchesRef > 0) {
+      if (!force) {
+        throw new Error('No se pueden regenerar las zonas porque existen partidos de playoffs (bracket) que dependen de ellas. Elimine el bracket o use force=true.');
+      }
+      
+      // Detach matches from zones before deleting zones
+      await Match.update(
+        { home_source_zone_id: null },
+        { where: { home_source_zone_id: zoneIds }, transaction }
+      );
+      await Match.update(
+        { away_source_zone_id: null },
+        { where: { away_source_zone_id: zoneIds }, transaction }
+      );
+    }
+
+    await ZoneStanding.destroy({ where: { zone_id: zoneIds }, transaction });
+    await ZoneMatch.destroy({ where: { zone_id: zoneIds }, transaction });
+    await ZoneTeam.destroy({ where: { zone_id: zoneIds }, transaction });
+    await Zone.destroy({ where: { id: zoneIds }, transaction });
+  }
+  return true;
+}
+
+async function generateMatchesForCategory(tournamentCategoryId, transaction) {
+  const zones = await Zone.findAll({
+    where: { tournament_category_id: tournamentCategoryId },
+    transaction
+  });
+
+  for (const zone of zones) {
+    const zoneTeams = await ZoneTeam.findAll({
+      where: { zone_id: zone.id },
+      include: [{ model: Team, as: 'team' }],
+      order: [['order_index', 'ASC']], // Important for deterministic pairing
+      transaction
+    });
+
+    const teamsInZone = zoneTeams.map(zt => zt.team);
+
+    // Special logic for 4 teams
+    if (teamsInZone.length === 4) {
+      // Round 1
+      // Match 1: Pos 1 (index 0) vs Pos 4 (index 3)
+      const match1 = await ZoneMatch.create({
+        zone_id: zone.id,
+        round_number: 1,
+        match_number: 1,
+        team_home_id: teamsInZone[0].id,
+        team_away_id: teamsInZone[3].id,
+        status: 'pending'
+      }, { transaction });
+
+      // Match 2: Pos 2 (index 1) vs Pos 3 (index 2)
+      const match2 = await ZoneMatch.create({
+        zone_id: zone.id,
+        round_number: 1,
+        match_number: 2,
+        team_home_id: teamsInZone[1].id,
+        team_away_id: teamsInZone[2].id,
+        status: 'pending'
+      }, { transaction });
+
+      // Round 2
+      // Match 3: Winner M1 vs Winner M2
+      await ZoneMatch.create({
+        zone_id: zone.id,
+        round_number: 2,
+        match_number: 3,
+        team_home_id: null,
+        team_away_id: null,
+        parent_match_home_id: match1.id,
+        parent_condition_home: 'winner',
+        parent_match_away_id: match2.id,
+        parent_condition_away: 'winner',
+        status: 'pending'
+      }, { transaction });
+
+      // Match 4: Loser M1 vs Loser M2
+      await ZoneMatch.create({
+        zone_id: zone.id,
+        round_number: 2,
+        match_number: 4,
+        team_home_id: null,
+        team_away_id: null,
+        parent_match_home_id: match1.id,
+        parent_condition_home: 'loser',
+        parent_match_away_id: match2.id,
+        parent_condition_away: 'loser',
+        status: 'pending'
+      }, { transaction });
+
+    } else {
+      // Standard Round Robin for other sizes
+      const fixtures = generateRoundRobinFixture(teamsInZone);
+
+      let matchNumber = 1;
+      for (let roundIndex = 0; roundIndex < fixtures.length; roundIndex++) {
+        const round = fixtures[roundIndex];
+
+        for (const match of round) {
+          await ZoneMatch.create({
+            zone_id: zone.id,
+            round_number: roundIndex + 1,
+            match_number: matchNumber++,
+            team_home_id: match.home.id,
+            team_away_id: match.away.id,
+            status: 'pending'
+          }, { transaction });
+        }
+      }
+    }
+
+    for (const team of teamsInZone) {
+      await ZoneStanding.create({
+        zone_id: zone.id,
+        team_id: team.id,
+        played: 0,
+        wins: 0,
+        losses: 0,
+        points: 0,
+        sets_for: 0,
+        sets_against: 0,
+        sets_diff: 0,
+        games_for: 0,
+        games_against: 0,
+        games_diff: 0
+      }, { transaction });
+    }
+  }
+}
+
 async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, force = false) {
   const transaction = await sequelize.transaction();
 
   try {
-    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId);
+    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, { transaction });
     if (!tournamentCategory) {
       throw new Error('Categoría de torneo no encontrada');
     }
 
-    const existingZones = await Zone.findAll({
-      where: { tournament_category_id: tournamentCategoryId }
-    });
-
-    if (existingZones.length > 0) {
-      const hasMatches = await ZoneMatch.count({
-        where: { zone_id: existingZones.map(z => z.id), status: 'played' }
-      });
-
-      if (hasMatches > 0 && !force) {
-        throw new Error('No se pueden regenerar las zonas porque ya hay partidos jugados. Use force=true para forzar la regeneración.');
-      }
-
-      if (!force) {
-        await transaction.rollback();
-        return { zones: existingZones, isNew: false };
-      }
-
-      await ZoneStanding.destroy({
-        where: { zone_id: existingZones.map(z => z.id) },
-        transaction
-      });
-
-      await ZoneMatch.destroy({
-        where: { zone_id: existingZones.map(z => z.id) },
-        transaction
-      });
-
-      await ZoneTeam.destroy({
-        where: { zone_id: existingZones.map(z => z.id) },
-        transaction
-      });
-
-      await Zone.destroy({
+    const cleared = await validateAndClearZones(tournamentCategoryId, force, transaction);
+    if (!cleared) {
+      // If not cleared and not forced, we fetch existing and return
+      const existingZones = await Zone.findAll({
         where: { tournament_category_id: tournamentCategoryId },
         transaction
       });
+      await transaction.rollback(); // Rollback any locks, though we didn't change anything
+      return { zones: existingZones, isNew: false };
     }
 
     const registrations = await Registration.findAll({
@@ -129,7 +273,8 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
             { model: PlayerProfile, as: 'player2' }
           ]
         }
-      ]
+      ],
+      transaction
     });
 
     if (registrations.length < 2) {
@@ -158,110 +303,12 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
       const zoneIndex = i % numZones;
       await ZoneTeam.create({
         zone_id: zones[zoneIndex].id,
-        team_id: shuffledTeams[i].id
+        team_id: shuffledTeams[i].id,
+        order_index: Math.floor(i / numZones) // Assign order index based on distribution
       }, { transaction });
     }
 
-    for (const zone of zones) {
-      const zoneTeams = await ZoneTeam.findAll({
-        where: { zone_id: zone.id },
-        include: [{ model: Team, as: 'team' }],
-        order: [['order_index', 'ASC']], // Important for deterministic pairing
-        transaction
-      });
-
-      const teamsInZone = zoneTeams.map(zt => zt.team);
-
-      // Special logic for 4 teams
-      if (teamsInZone.length === 4) {
-        // Round 1
-        // Match 1: Pos 1 (index 0) vs Pos 4 (index 3)
-        const match1 = await ZoneMatch.create({
-          zone_id: zone.id,
-          round_number: 1,
-          match_number: 1,
-          team_home_id: teamsInZone[0].id,
-          team_away_id: teamsInZone[3].id,
-          status: 'pending'
-        }, { transaction });
-
-        // Match 2: Pos 2 (index 1) vs Pos 3 (index 2)
-        const match2 = await ZoneMatch.create({
-          zone_id: zone.id,
-          round_number: 1,
-          match_number: 2,
-          team_home_id: teamsInZone[1].id,
-          team_away_id: teamsInZone[2].id,
-          status: 'pending'
-        }, { transaction });
-
-        // Round 2
-        // Match 3: Winner M1 vs Winner M2
-        await ZoneMatch.create({
-          zone_id: zone.id,
-          round_number: 2,
-          match_number: 3,
-          team_home_id: null,
-          team_away_id: null,
-          parent_match_home_id: match1.id,
-          parent_condition_home: 'winner',
-          parent_match_away_id: match2.id,
-          parent_condition_away: 'winner',
-          status: 'pending'
-        }, { transaction });
-
-        // Match 4: Loser M1 vs Loser M2
-        await ZoneMatch.create({
-          zone_id: zone.id,
-          round_number: 2,
-          match_number: 4,
-          team_home_id: null,
-          team_away_id: null,
-          parent_match_home_id: match1.id,
-          parent_condition_home: 'loser',
-          parent_match_away_id: match2.id,
-          parent_condition_away: 'loser',
-          status: 'pending'
-        }, { transaction });
-
-      } else {
-        // Standard Round Robin for other sizes
-        const fixtures = generateRoundRobinFixture(teamsInZone);
-
-        let matchNumber = 1;
-        for (let roundIndex = 0; roundIndex < fixtures.length; roundIndex++) {
-          const round = fixtures[roundIndex];
-
-          for (const match of round) {
-            await ZoneMatch.create({
-              zone_id: zone.id,
-              round_number: roundIndex + 1,
-              match_number: matchNumber++,
-              team_home_id: match.home.id,
-              team_away_id: match.away.id,
-              status: 'pending'
-            }, { transaction });
-          }
-        }
-      }
-
-      for (const team of teamsInZone) {
-        await ZoneStanding.create({
-          zone_id: zone.id,
-          team_id: team.id,
-          played: 0,
-          wins: 0,
-          losses: 0,
-          points: 0,
-          sets_for: 0,
-          sets_against: 0,
-          sets_diff: 0,
-          games_for: 0,
-          games_against: 0,
-          games_diff: 0
-        }, { transaction });
-      }
-    }
+    await generateMatchesForCategory(tournamentCategoryId, transaction);
 
     await TournamentCategory.update(
       {
@@ -273,8 +320,83 @@ async function generateZones(tournamentCategoryId, zoneSize, qualifiersPerZone, 
     );
 
     await transaction.commit();
+    
+    // Fetch result to return
+    const result = await Zone.findAll({
+      where: { tournament_category_id: tournamentCategoryId },
+      include: [
+        {
+          model: ZoneTeam,
+          as: 'zoneTeams',
+          include: [{ model: Team, as: 'team' }]
+        }
+      ]
+    });
 
-    return { zones, isNew: true };
+    return { zones: result, isNew: true };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function generateManualZones(tournamentCategoryId, zonesData, force = false) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, { transaction });
+    if (!tournamentCategory) {
+      throw new Error('Categoría de torneo no encontrada');
+    }
+
+    const cleared = await validateAndClearZones(tournamentCategoryId, force, transaction);
+    if (!cleared) {
+      throw new Error('Ya existen zonas. Use force=true para sobrescribir.');
+    }
+
+    // Create zones and assign teams
+    for (const zoneData of zonesData) {
+      const zone = await Zone.create({
+        tournament_category_id: tournamentCategoryId,
+        name: zoneData.name,
+        order_index: zoneData.order_index
+      }, { transaction });
+
+      // Assign teams to the zone
+      for (let i = 0; i < zoneData.teams.length; i++) {
+        await ZoneTeam.create({
+          zone_id: zone.id,
+          team_id: zoneData.teams[i],
+          order_index: i
+        }, { transaction });
+      }
+    }
+
+    await generateMatchesForCategory(tournamentCategoryId, transaction);
+
+    await TournamentCategory.update(
+      {
+        estado: 'zonas_generadas'
+      },
+      { where: { id: tournamentCategoryId }, transaction }
+    );
+
+    await transaction.commit();
+
+    // Fetch result
+    const result = await Zone.findAll({
+      where: { tournament_category_id: tournamentCategoryId },
+      include: [
+        {
+          model: ZoneTeam,
+          as: 'zoneTeams',
+          include: [{ model: Team, as: 'team' }]
+        }
+      ]
+    });
+
+    return { zones: result, isNew: true };
+
   } catch (error) {
     await transaction.rollback();
     throw error;
@@ -436,6 +558,7 @@ async function updateDependentMatches(matchId, transaction) {
 
 module.exports = {
   generateZones,
+  generateManualZones,
   recalculateStandings,
   updateDependentMatches
 };

@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import api from '../../services/api'
 import Modal from '../Modal'
 import Toast from '../Toast'
+import { formatDateForInput } from '../../utils/helpers'
 
 export default function AdminTournamentDetail() {
   const { id } = useParams()
@@ -382,7 +383,8 @@ export default function AdminTournamentDetail() {
 
       const response = await api.post('/api/admin/zones/generate-manual', {
         tournament_category_id: parseInt(selectedCategory),
-        zones: zonesData
+        zones: zonesData,
+        force: true // Permitir sobrescribir si ya existen
       })
 
       if (response.data.ok) {
@@ -515,7 +517,7 @@ export default function AdminTournamentDetail() {
 
     setScheduleMatch({ ...match, isZone })
     setScheduleData({
-      scheduled_at: match.scheduled_at ? new Date(match.scheduled_at).toISOString().slice(0, 16) : '',
+      scheduled_at: match.scheduled_at ? formatDateForInput(match.scheduled_at) : '',
       venue: match.venue || ''
     })
     setShowScheduleModal(true)
@@ -530,7 +532,12 @@ export default function AdminTournamentDetail() {
         ? `/api/admin/zone-matches/${scheduleMatch.id}/schedule`
         : `/api/admin/matches/${scheduleMatch.id}/schedule`
       
-      const response = await api.patch(endpoint, scheduleData)
+      const payload = {
+        ...scheduleData,
+        scheduled_at: scheduleData.scheduled_at ? `${scheduleData.scheduled_at}:00-03:00` : ''
+      }
+
+      const response = await api.patch(endpoint, payload)
       if (response.data.ok) {
         setToast({ message: 'Partido programado exitosamente', type: 'success' })
         setShowScheduleModal(false)
@@ -957,12 +964,63 @@ export default function AdminTournamentDetail() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Zonas</h3>
-            <button
-              onClick={() => setShowZoneModal(true)}
-              className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
-            >
-              Generar Zonas
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setZoneMode('auto')
+                  setShowZoneModal(true)
+                }}
+                className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+              >
+                Generar Zonas
+              </button>
+              {zones.length > 0 && (
+                <button
+                  onClick={async () => {
+                    setLoading(true)
+                    try {
+                      // Cargar inscripciones para tener la lista completa de equipos disponibles (aunque estén en zonas)
+                      const responseRegs = await api.get(`/api/admin/registrations?tournamentCategoryId=${selectedCategory}`)
+                      if (responseRegs.data.ok) {
+                        const confirmedRegs = responseRegs.data.data.filter(r => r.estado === 'confirmado' || r.estado === 'inscripto')
+                        
+                        // Mapear zonas actuales al formato de manualZones
+                        const currentZones = zones.map(z => ({
+                          name: z.name,
+                          teams: z.zoneTeams?.map(zt => {
+                            // Encontrar la inscripción correspondiente al equipo
+                            const reg = confirmedRegs.find(r => r.team_id === zt.team_id)
+                            return reg || { 
+                              id: zt.team_id, // Fallback si no encuentra registration
+                              team_id: zt.team_id,
+                              team: zt.team
+                            }
+                          }) || []
+                        }))
+
+                        setManualZones(currentZones)
+
+                        // Calcular disponibles: aquellos que NO están en ninguna zona
+                        const teamsInZones = new Set()
+                        currentZones.forEach(z => z.teams.forEach(t => teamsInZones.add(t.team_id || t.team?.id)))
+                        
+                        const available = confirmedRegs.filter(r => !teamsInZones.has(r.team_id))
+                        setAvailableRegistrations(available)
+
+                        setShowManualZoneModal(true)
+                      }
+                    } catch (error) {
+                      setToast({ message: 'Error al cargar datos de zonas', type: 'error' })
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700"
+                >
+                  Editar Zonas
+                </button>
+              )}
+            </div>
           </div>
           {zones.length === 0 ? (
             <p className="text-gray-500">No hay zonas generadas</p>
@@ -1010,8 +1068,13 @@ export default function AdminTournamentDetail() {
                         <div className="mt-3 text-xs text-gray-600 space-y-1">
                           {match.scheduled_at && (
                             <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
-                              dateStyle: 'short', 
-                              timeStyle: 'short' 
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: false,
+                              timeZone: 'America/Argentina/Buenos_Aires'
                             })}</div>
                           )}
                           {match.venue && <div>📍 {match.venue}</div>}
@@ -1111,8 +1174,13 @@ export default function AdminTournamentDetail() {
                         <div className="mt-3 text-xs text-gray-600 space-y-1">
                           {match.scheduled_at && (
                             <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
-                              dateStyle: 'short', 
-                              timeStyle: 'short' 
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: false,
+                              timeZone: 'America/Argentina/Buenos_Aires'
                             })}</div>
                           )}
                           {match.venue && <div>📍 {match.venue}</div>}
@@ -1541,6 +1609,9 @@ export default function AdminTournamentDetail() {
             </div>
           </div>
           <div className="flex justify-end space-x-3 pt-4 border-t">
+            <div className="flex-1 text-xs text-red-600 font-semibold flex items-center">
+              ⚠️ Al confirmar, se regenerarán todos los partidos. Si ya había resultados cargados, se perderán.
+            </div>
             <button
               type="button"
               onClick={() => setShowManualZoneModal(false)}
@@ -1550,35 +1621,7 @@ export default function AdminTournamentDetail() {
             </button>
             <button
               type="button"
-              onClick={async () => {
-                 setLoading(true)
-                 try {
-                   if (manualZones.length === 0) {
-                      setToast({message: 'Debe crear al menos una zona', type: 'error'})
-                      return
-                   }
-
-                   const data = {
-                      tournament_category_id: selectedCategory,
-                      zones: manualZones.map((z, i) => ({
-                        name: z.name,
-                        order_index: i,
-                        teams: z.teams.map(t => t.team_id)
-                      }))
-                   }
-
-                   const res = await api.post('/api/admin/zones/generate-manual', data)
-                   if(res.data.ok) {
-                     setToast({message: 'Zonas creadas', type: 'success'})
-                     setShowManualZoneModal(false)
-                     fetchCategoryData()
-                   }
-                 } catch(e) {
-                   setToast({message: 'Error al crear zonas', type: 'error'})
-                 } finally {
-                   setLoading(false)
-                 }
-              }}
+              onClick={handleConfirmManualZones}
               disabled={loading || availableRegistrations.length > 0}
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
             >

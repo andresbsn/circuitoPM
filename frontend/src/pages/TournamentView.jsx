@@ -312,9 +312,10 @@ export default function TournamentView() {
                                   <span>{new Date(match.scheduled_at).toLocaleString('es-AR', {
                                     weekday: 'short',
                                     day: 'numeric',
-                                    month: 'short',
                                     hour: '2-digit',
-                                    minute: '2-digit'
+                                    minute: '2-digit',
+                                    hour12: false,
+                                    timeZone: 'America/Argentina/Buenos_Aires'
                                   })}</span>
                                 ) : (
                                   <span className="italic">A confirmar</span>
@@ -444,7 +445,8 @@ export default function TournamentView() {
                                           month: '2-digit',
                                           hour: '2-digit',
                                           minute: '2-digit',
-                                          hour12: false
+                                          hour12: false,
+                                          timeZone: 'America/Argentina/Buenos_Aires'
                                         })}
                                       </div>
                                     )}

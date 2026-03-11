@@ -1,6 +1,6 @@
 const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProfile, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Bracket, Match, Venue, User, Locality } = require('../models');
 const bcrypt = require('bcryptjs');
-const { generateZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
+const { generateZones, generateManualZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
 const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
 const { updatePlayoffsAfterZoneResults } = require('../services/playoffUpdateService');
 const { validateScoreFormat, calculateMatchStats, validateTeamCategoryEligibility } = require('../utils/validation');
@@ -613,7 +613,7 @@ exports.updateTeamStatus = async (req, res) => {
 
 exports.generateZonesManual = async (req, res) => {
   try {
-    const { tournament_category_id, zones } = req.body;
+    const { tournament_category_id, zones, force } = req.body;
 
     if (!tournament_category_id || !zones || !Array.isArray(zones)) {
       return sendValidationError(res, 'Datos inválidos');
@@ -624,213 +624,15 @@ exports.generateZonesManual = async (req, res) => {
       return sendNotFoundError(res, 'Categoría de torneo no encontrada');
     }
 
-    // Verificar si ya existen zonas
-    const existingZones = await Zone.findAll({ where: { tournament_category_id } });
-    if (existingZones.length > 0) {
-      return sendError(res, {
-        code: ERROR_CODES.CONFLICT,
-        message: 'Ya existen zonas para esta categoría. Elimínelas primero.'
-      }, 409);
-    }
+    // Use service to generate manual zones
+    const { zones: result, isNew } = await generateManualZones(tournament_category_id, zones, force || false);
 
-    await sequelize.transaction(async (t) => {
-      // Crear zonas y asignar equipos
-      for (const zoneData of zones) {
-        const zone = await Zone.create({
-          tournament_category_id,
-          name: zoneData.name,
-          order_index: zoneData.order_index
-        }, { transaction: t });
-
-        // Asignar equipos a la zona
-        for (let i = 0; i < zoneData.teams.length; i++) {
-          await ZoneTeam.create({
-            zone_id: zone.id,
-            team_id: zoneData.teams[i],
-            order_index: i
-          }, { transaction: t });
-
-          // Crear standing inicial
-          await ZoneStanding.create({
-            zone_id: zone.id,
-            team_id: zoneData.teams[i],
-            played: 0,
-            won: 0,
-            lost: 0,
-            sets_won: 0,
-            sets_lost: 0,
-            sets_diff: 0,
-            games_won: 0,
-            games_lost: 0,
-            games_diff: 0,
-            points: 0
-          }, { transaction: t });
-        }
-
-        // Generar partidos
-        const teams = [...zoneData.teams]; // Copia para manipular en RR sin afectar original si se necesitara
-
-        if (teams.length === 4) {
-          // Lógica especial para zona de 4:
-          // P1: 1 vs 4
-          // P2: 2 vs 3
-          // P3: Ganador P1 vs Ganador P2
-          // P4: Perdedor P1 vs Perdedor P2
-
-          // Match 1: Pos 1 (index 0) vs Pos 4 (index 3)
-          const match1 = await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 1,
-            match_number: 1,
-            team_home_id: teams[0],
-            team_away_id: teams[3],
-            status: 'pending'
-          }, { transaction: t });
-
-          // Match 2: Pos 2 (index 1) vs Pos 3 (index 2)
-          const match2 = await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 1,
-            match_number: 2,
-            team_home_id: teams[1],
-            team_away_id: teams[2],
-            status: 'pending'
-          }, { transaction: t });
-
-          // Match 3: Ganadores
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 2,
-            match_number: 3,
-            team_home_id: null,
-            team_away_id: null,
-            parent_match_home_id: match1.id,
-            parent_condition_home: 'winner',
-            parent_match_away_id: match2.id,
-            parent_condition_away: 'winner',
-            status: 'pending'
-          }, { transaction: t });
-
-          // Match 4: Perdedores
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 2,
-            match_number: 4,
-            team_home_id: null,
-            team_away_id: null,
-            parent_match_home_id: match1.id,
-            parent_condition_home: 'loser',
-            parent_match_away_id: match2.id,
-            parent_condition_away: 'loser',
-            status: 'pending'
-          }, { transaction: t });
-
-        } else if (teams.length === 3) {
-          // Lógica especial para zona de 3:
-          // P1: 1 vs 2
-          // P2: 2 vs 3
-          // P3: 3 vs 1
-
-          // Match 1: 1 vs 2
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 1,
-            match_number: 1,
-            team_home_id: teams[0],
-            team_away_id: teams[1],
-            status: 'pending'
-          }, { transaction: t });
-
-          // Match 2: 2 vs 3
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 2,
-            match_number: 2,
-            team_home_id: teams[1],
-            team_away_id: teams[2],
-            status: 'pending'
-          }, { transaction: t });
-
-          // Match 3: 3 vs 1
-          await ZoneMatch.create({
-            zone_id: zone.id,
-            round_number: 3,
-            match_number: 3,
-            team_home_id: teams[2],
-            team_away_id: teams[0],
-            status: 'pending'
-          }, { transaction: t });
-
-        } else {
-          // Standard Round Robin para otros tamaños
-          let matchNumber = 1;
-          const rrTeams = [...teams]; // Use a copy for rotation
-
-          // Fix for loop condition/logic which was slightly off in previous snippet for generic N
-          // Standard RR algorithm (Circle Method)
-          // If odd number of teams, add dummy
-          if (rrTeams.length % 2 !== 0) {
-            rrTeams.push(null); // Bye
-          }
-
-          const totalRounds = rrTeams.length - 1;
-          const matchesPerRound = rrTeams.length / 2;
-
-          for (let round = 1; round <= totalRounds; round++) {
-            for (let i = 0; i < matchesPerRound; i++) {
-              const home = rrTeams[i];
-              const away = rrTeams[rrTeams.length - 1 - i];
-
-              if (home && away) {
-                await ZoneMatch.create({
-                  zone_id: zone.id,
-                  round_number: round,
-                  match_number: matchNumber++,
-                  team_home_id: home,
-                  team_away_id: away,
-                  status: 'pending'
-                }, { transaction: t });
-              }
-            }
-
-            // Rotar equipos (excepto el primero)
-            // [0, 1, 2, 3] -> [0, 3, 1, 2]
-            const fixed = rrTeams[0];
-            const rotated = rrTeams.slice(1);
-            rotated.unshift(rotated.pop());
-            rrTeams.splice(0, rrTeams.length, fixed, ...rotated);
-          }
-        }
-      }
-    });
-
-    // Obtener zonas creadas con todos los datos
-    const result = await Zone.findAll({
-      where: { tournament_category_id },
-      include: [
-        {
-          model: ZoneTeam,
-          as: 'zoneTeams',
-          include: [
-            {
-              model: Team,
-              as: 'team',
-              include: [
-                { model: PlayerProfile, as: 'player1', include: [{ model: Category, as: 'categoriaBase' }] },
-                { model: PlayerProfile, as: 'player2', include: [{ model: Category, as: 'categoriaBase' }] }
-              ]
-            }
-          ]
-        }
-      ]
-    });
-
-    return sendSuccess(res, { zones: result, isNew: true }, 201);
+    return sendSuccess(res, { zones: result, isNew }, 201);
   } catch (error) {
     console.error('Generate manual zones error:', error);
     return sendError(res, {
       code: ERROR_CODES.SERVER_ERROR,
-      message: 'Error al generar zonas manualmente',
+      message: error.message || 'Error al generar zonas manualmente',
       details: error.message
     });
   }

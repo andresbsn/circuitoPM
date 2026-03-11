@@ -14,6 +14,11 @@ const ZoneTeam = sequelize.define('ZoneTeam', {
   team_id: {
     type: DataTypes.INTEGER,
     allowNull: false
+  },
+  order_index: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
   }
 }, {
   tableName: 'zone_teams',
