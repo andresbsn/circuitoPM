@@ -1,0 +1,22 @@
+SELECT 
+    TO_CHAR(zm.scheduled_at, 'YYYY-MM-DD HH24:MI') AS fecha_hora,
+    zm.venue AS complejo,
+    cat.name || ' ' || cat.gender AS categoria,
+    z.name AS zona,
+    p1h.apellido || ' ' || p1h.nombre AS local_j1,
+    p2h.apellido || ' ' || p2h.nombre AS local_j2,
+    'VS' AS vs,
+    p1a.apellido || ' ' || p1a.nombre AS visita_j1,
+    p2a.apellido || ' ' || p2a.nombre AS visita_j2
+FROM zone_matches zm
+JOIN zones z ON zm.zone_id = z.id
+JOIN tournament_categories tc ON z.tournament_category_id = tc.id
+JOIN categories cat ON tc.category_id = cat.id
+LEFT JOIN teams th ON zm.team_home_id = th.id
+LEFT JOIN teams ta ON zm.team_away_id = ta.id
+LEFT JOIN player_profiles p1h ON th.player1_dni = p1h.dni
+LEFT JOIN player_profiles p2h ON th.player2_dni = p2h.dni
+LEFT JOIN player_profiles p1a ON ta.player1_dni = p1a.dni
+LEFT JOIN player_profiles p2a ON ta.player2_dni = p2a.dni
+WHERE zm.scheduled_at IS NOT NULL
+ORDER BY zm.scheduled_at ASC, zm.venue ASC;

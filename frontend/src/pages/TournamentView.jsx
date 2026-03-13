@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { formatMatchDate } from '../utils/helpers'
 
 import { useAuth } from '../context/AuthContext'
 
@@ -309,14 +310,7 @@ export default function TournamentView() {
                               <div className="flex items-center gap-2">
                                 <span>📅</span>
                                 {match.scheduled_at ? (
-                                  <span>{new Date(match.scheduled_at).toLocaleString('es-AR', {
-                                    weekday: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: false,
-                                    timeZone: 'America/Argentina/Buenos_Aires'
-                                  })}</span>
+                                  <span>{formatMatchDate(match.scheduled_at)}</span>
                                 ) : (
                                   <span className="italic">A confirmar</span>
                                 )}
@@ -440,14 +434,7 @@ export default function TournamentView() {
                                     {match.scheduled_at && (
                                       <div className="flex items-center text-[10px] text-gray-500 font-medium">
                                         <span className="mr-1">📅</span>
-                                        {new Date(match.scheduled_at).toLocaleString('es-AR', { 
-                                          day: '2-digit', 
-                                          month: '2-digit',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                          hour12: false,
-                                          timeZone: 'America/Argentina/Buenos_Aires'
-                                        })}
+                                        {formatMatchDate(match.scheduled_at)}
                                       </div>
                                     )}
                                     {match.venue && (

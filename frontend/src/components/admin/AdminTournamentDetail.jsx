@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import api from '../../services/api'
 import Modal from '../Modal'
 import Toast from '../Toast'
-import { formatDateForInput } from '../../utils/helpers'
+import { formatDateForInput, formatMatchDate } from '../../utils/helpers'
 
 export default function AdminTournamentDetail() {
   const { id } = useParams()
@@ -1067,15 +1067,7 @@ export default function AdminTournamentDetail() {
                       {(match.scheduled_at || match.venue) && (
                         <div className="mt-3 text-xs text-gray-600 space-y-1">
                           {match.scheduled_at && (
-                            <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: false,
-                              timeZone: 'America/Argentina/Buenos_Aires'
-                            })}</div>
+                            <div>📅 {formatMatchDate(match.scheduled_at)}</div>
                           )}
                           {match.venue && <div>📍 {match.venue}</div>}
                         </div>
@@ -1173,15 +1165,7 @@ export default function AdminTournamentDetail() {
                       {(match.scheduled_at || match.venue) && (
                         <div className="mt-3 text-xs text-gray-600 space-y-1">
                           {match.scheduled_at && (
-                            <div>📅 {new Date(match.scheduled_at).toLocaleString('es-AR', { 
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: false,
-                              timeZone: 'America/Argentina/Buenos_Aires'
-                            })}</div>
+                            <div>📅 {formatMatchDate(match.scheduled_at)}</div>
                           )}
                           {match.venue && <div>📍 {match.venue}</div>}
                         </div>
