@@ -3,6 +3,7 @@ const router = express.Router();
 const publicController = require('../controllers/publicController');
 const rankingController = require('../controllers/rankingController');
 const localityController = require('../controllers/localityController');
+const venueController = require('../controllers/venueController');
 
 router.get('/zones', publicController.getZones);
 router.get('/standings', publicController.getStandings);
@@ -11,5 +12,6 @@ router.get('/playoffs', publicController.getPlayoffs);
 router.get('/ranking', rankingController.getRanking);
 router.get('/ranking/player/:dni', rankingController.getPlayerPoints);
 router.get('/localities', localityController.getLocalities);
+router.get('/venues', venueController.getAllVenues);
 
 module.exports = router;

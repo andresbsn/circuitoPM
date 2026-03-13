@@ -40,7 +40,19 @@ export default function AdminTournamentDetail() {
   useEffect(() => {
     fetchTournament()
     fetchCategories()
+    fetchVenues()
   }, [id])
+
+  const fetchVenues = async () => {
+    try {
+      const response = await api.get('/api/admin/venues')
+      if (response.data.ok) {
+        setVenues(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching venues:', error)
+    }
+  }
 
   useEffect(() => {
     if (selectedCategory) {
@@ -90,6 +102,19 @@ export default function AdminTournamentDetail() {
       }
     } catch (error) {
       console.error('Error fetching category data:', error)
+    }
+  }
+
+  const getVenueBorderColor = (venueName) => {
+    if (!venueName) return ''
+    const venue = venues.find(v => v.name === venueName)
+    if (!venue) return ''
+    
+    switch (venue.id) {
+      case 1: return 'border-blue-500'
+      case 3: return 'border-green-500'
+      case 4: return 'border-red-500'
+      default: return ''
     }
   }
 
@@ -1022,24 +1047,21 @@ export default function AdminTournamentDetail() {
               )}
             </div>
           </div>
-          {zones.length === 0 ? (
-            <p className="text-gray-500">No hay zonas generadas</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {zones.map(zone => (
-                <div key={zone.id} className="bg-white rounded-lg shadow p-6">
-                  <h4 className="text-md font-semibold text-gray-900 mb-3">{zone.name}</h4>
-                  <div className="space-y-2">
-                    {zone.zoneTeams?.map(zt => (
-                      <div key={zt.id} className="text-sm text-gray-700">
-                        {zt.team.player1.nombre} {zt.team.player1.apellido} / {zt.team.player2.nombre} {zt.team.player2.apellido}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {zones.map((zone) => (
+              <div key={zone.id} className="bg-white p-4 rounded shadow">
+                <h4 className="font-bold mb-2">{zone.name}</h4>
+                <ul className="text-sm">
+                  {zone.zoneTeams?.map((zt) => (
+                    <li key={zt.id} className="mb-1">
+                      {zt.team.player1.nombre} {zt.team.player1.apellido} / {zt.team.player2.nombre} {zt.team.player2.apellido}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1051,7 +1073,7 @@ export default function AdminTournamentDetail() {
           ) : (
             <div className="space-y-4">
               {zoneMatches.map(match => (
-                <div key={match.id} className="bg-white rounded-lg shadow p-6">
+                <div key={match.id} className={`bg-white rounded-lg shadow p-6 border-2 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="mb-2">
@@ -1147,7 +1169,7 @@ export default function AdminTournamentDetail() {
           ) : (
             <div className="space-y-4">
               {playoffs.matches?.map(match => (
-                <div key={match.id} className="bg-white rounded-lg shadow p-6">
+                <div key={match.id} className={`bg-white rounded-lg shadow p-6 border-2 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="mb-2">

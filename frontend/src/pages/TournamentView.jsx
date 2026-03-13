@@ -17,9 +17,11 @@ export default function TournamentView() {
   const [zoneMatches, setZoneMatches] = useState([])
   const [playoffs, setPlayoffs] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [venues, setVenues] = useState([])
 
   useEffect(() => {
     fetchTournament()
+    fetchVenues()
   }, [id])
 
   useEffect(() => {
@@ -27,6 +29,17 @@ export default function TournamentView() {
       fetchCategoryData()
     }
   }, [selectedCategory, activeTab])
+
+  const fetchVenues = async () => {
+    try {
+      const response = await api.get('/api/tournament-categories/venues')
+      if (response.data.ok) {
+        setVenues(response.data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching venues:', error)
+    }
+  }
 
   const fetchTournament = async () => {
     try {
@@ -60,6 +73,19 @@ export default function TournamentView() {
       }
     } catch (error) {
       console.error('Error fetching category data:', error)
+    }
+  }
+
+  const getVenueBorderColor = (venueName) => {
+    if (!venueName) return ''
+    const venue = venues.find(v => v.name === venueName)
+    if (!venue) return ''
+    
+    switch (venue.id) {
+      case 1: return 'border-blue-500'
+      case 3: return 'border-green-500'
+      case 4: return 'border-red-500'
+      default: return ''
     }
   }
 
@@ -303,7 +329,7 @@ export default function TournamentView() {
                     </div>
                     <div className="divide-y divide-gray-200">
                       {matches.map(match => (
-                        <div key={match.id} className="p-6 hover:bg-gray-50 transition-colors">
+                        <div key={match.id} className={`p-6 hover:bg-gray-50 transition-colors border-l-4 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             {/* Fecha y Lugar */}
                             <div className="md:col-span-1 text-sm text-gray-500 space-y-1">
@@ -410,7 +436,7 @@ export default function TournamentView() {
                                     {/* La "caja" del partido */}
                                     <div className={`
                                       relative z-10 bg-white border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
-                                      ${match.status === 'played' ? 'border-primary-100' : 'border-gray-200'}
+                                      ${getVenueBorderColor(match.venue) || (match.status === 'played' ? 'border-primary-100' : 'border-gray-200')}
                                       group-hover:shadow-md group-hover:border-primary-300
                                     `}>
                                       {/* Equipo 1 (Home) */}
