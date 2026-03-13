@@ -379,107 +379,129 @@ export default function TournamentView() {
                       round.matches.push(match);
                     });
 
-                    return rounds.map((round, roundIdx) => (
-                      <div key={round.number} className="flex flex-col min-w-[280px] relative">
-                        {/* Título de la Ronda */}
-                        <div className="text-center mb-8">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-50 py-2 rounded-full border border-gray-100">
-                            {round.name}
-                          </h4>
-                        </div>
-                        
-                        {/* Contenedor de Matches */}
-                        <div className="flex-1 flex flex-col justify-around py-4">
-                          {round.matches.map((match, matchIdx) => (
-                            <div key={match.id} className="relative group">
-                              {/* La "caja" del partido */}
-                              <div className={`
-                                relative z-10 bg-white border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
-                                ${match.status === 'played' ? 'border-primary-100' : 'border-gray-200'}
-                                group-hover:shadow-md group-hover:border-primary-300
-                              `}>
-                                {/* Equipo 1 (Home) */}
-                                <div className={`
-                                  flex justify-between items-center p-3 border-b border-gray-100
-                                  ${match.winner_team_id === match.team_home_id ? 'bg-primary-50' : ''}
-                                `}>
-                                  <div className="flex items-center gap-2 overflow-hidden">
-                                    <span className="text-[10px] font-bold text-gray-400 w-4">
-                                      {match.home_source_position || ''}
-                                    </span>
-                                    <span className={`text-[11px] truncate ${match.winner_team_id === match.team_home_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
-                                      {getPlayoffTeamLabel(match, 'home')}
-                                    </span>
-                                  </div>
-                                </div>
+                    // Helper para agrupar en pares
+                    const chunkPairs = (arr) => {
+                      const pairs = [];
+                      for (let i = 0; i < arr.length; i += 2) {
+                        pairs.push(arr.slice(i, i + 2));
+                      }
+                      return pairs;
+                    };
 
-                                {/* Equipo 2 (Away) */}
-                                <div className={`
-                                  flex justify-between items-center p-3
-                                  ${match.winner_team_id === match.team_away_id ? 'bg-primary-50' : ''}
-                                `}>
-                                  <div className="flex items-center gap-2 overflow-hidden">
-                                    <span className="text-[10px] font-bold text-gray-400 w-4">
-                                      {match.away_source_position || ''}
-                                    </span>
-                                    <span className={`text-[11px] truncate ${match.winner_team_id === match.team_away_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
-                                      {getPlayoffTeamLabel(match, 'away')}
-                                    </span>
-                                  </div>
-                                </div>
+                    return rounds.map((round, roundIdx) => {
+                      const isLastRound = roundIdx === rounds.length - 1;
+                      const pairs = chunkPairs(round.matches);
 
-                                {/* Información de Programación */}
-                                {(match.scheduled_at || match.venue) && match.status !== 'played' && match.status !== 'bye' && (
-                                  <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex flex-wrap gap-x-3 gap-y-1">
-                                    {match.scheduled_at && (
-                                      <div className="flex items-center text-[10px] text-gray-500 font-medium">
-                                        <span className="mr-1">📅</span>
-                                        {formatMatchDate(match.scheduled_at)}
+                      return (
+                        <div key={round.number} className="flex flex-col min-w-[280px] relative">
+                          {/* Título de la Ronda */}
+                          <div className="text-center mb-8">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-50 py-2 rounded-full border border-gray-100">
+                              {round.name}
+                            </h4>
+                          </div>
+                          
+                          {/* Contenedor de Matches */}
+                          <div className="flex-1 flex flex-col w-full relative">
+                            {pairs.map((pair, pairIdx) => (
+                              <div key={pairIdx} className="flex-1 flex flex-col justify-around relative group/pair">
+                                {pair.map((match) => (
+                                  <div key={match.id} className="relative group">
+                                    {/* La "caja" del partido */}
+                                    <div className={`
+                                      relative z-10 bg-white border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
+                                      ${match.status === 'played' ? 'border-primary-100' : 'border-gray-200'}
+                                      group-hover:shadow-md group-hover:border-primary-300
+                                    `}>
+                                      {/* Equipo 1 (Home) */}
+                                      <div className={`
+                                        flex justify-between items-center p-3 border-b border-gray-100
+                                        ${match.winner_team_id === match.team_home_id ? 'bg-primary-50' : ''}
+                                      `}>
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          <span className="text-[10px] font-bold text-gray-400 w-4">
+                                            {match.home_source_position || ''}
+                                          </span>
+                                          <span className={`text-[11px] truncate ${match.winner_team_id === match.team_home_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
+                                            {getPlayoffTeamLabel(match, 'home')}
+                                          </span>
+                                        </div>
                                       </div>
-                                    )}
-                                    {match.venue && (
-                                      <div className="flex items-center text-[10px] text-gray-500 font-medium truncate max-w-[150px]">
-                                        <span className="mr-1">📍</span>
-                                        {match.venue}
+
+                                      {/* Equipo 2 (Away) */}
+                                      <div className={`
+                                        flex justify-between items-center p-3
+                                        ${match.winner_team_id === match.team_away_id ? 'bg-primary-50' : ''}
+                                      `}>
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          <span className="text-[10px] font-bold text-gray-400 w-4">
+                                            {match.away_source_position || ''}
+                                          </span>
+                                          <span className={`text-[11px] truncate ${match.winner_team_id === match.team_away_id ? 'font-bold text-primary-900' : 'text-gray-700'}`}>
+                                            {getPlayoffTeamLabel(match, 'away')}
+                                          </span>
+                                        </div>
                                       </div>
+
+                                      {/* Información de Programación */}
+                                      {(match.scheduled_at || match.venue) && match.status !== 'played' && match.status !== 'bye' && (
+                                        <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex flex-wrap gap-x-3 gap-y-1">
+                                          {match.scheduled_at && (
+                                            <div className="flex items-center text-[10px] text-gray-500 font-medium">
+                                              <span className="mr-1">📅</span>
+                                              {formatMatchDate(match.scheduled_at)}
+                                            </div>
+                                          )}
+                                          {match.venue && (
+                                            <div className="flex items-center text-[10px] text-gray-500 font-medium truncate max-w-[150px]">
+                                              <span className="mr-1">📍</span>
+                                              {match.venue}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Resultado del Partido */}
+                                      {match.status === 'played' && (
+                                        <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex items-center justify-center">
+                                          <span className="text-xs font-bold text-gray-900">
+                                            {formatScore(match.score_json)}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Información Extra (BYE) */}
+                                    {match.status === 'bye' && (
+                                      <div className="absolute -bottom-5 right-0 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">BYE</div>
                                     )}
                                   </div>
+                                ))}
+
+                                {/* CONECTORES (Corchetes) - Solo si no es la última ronda */}
+                                {!isLastRound && pair.length === 2 && (
+                                  <>
+                                    {/* Línea Vertical */}
+                                    <div className="absolute -right-6 top-1/4 bottom-1/4 w-[2px] bg-gray-200 transition-colors duration-300 group-hover/pair:bg-primary-300"></div>
+                                    {/* Brazo Superior */}
+                                    <div className="absolute -right-6 top-1/4 w-6 h-[2px] bg-gray-200 transition-colors duration-300 group-hover/pair:bg-primary-300"></div>
+                                    {/* Brazo Inferior */}
+                                    <div className="absolute -right-6 bottom-1/4 w-6 h-[2px] bg-gray-200 transition-colors duration-300 group-hover/pair:bg-primary-300"></div>
+                                    {/* Cola hacia la siguiente ronda */}
+                                    <div className="absolute -right-12 top-1/2 w-6 h-[2px] bg-gray-200 transition-colors duration-300 group-hover/pair:bg-primary-300"></div>
+                                  </>
                                 )}
-
-                                {/* Resultado del Partido (Reemplaza programación cuando está jugado) */}
-                                {match.status === 'played' && (
-                                  <div className="bg-gray-50 px-3 py-1.5 border-t border-gray-100 flex items-center justify-center">
-                                    <span className="text-xs font-bold text-gray-900">
-                                      {formatScore(match.score_json)}
-                                    </span>
-                                  </div>
+                                
+                                {/* Conector Simple (si queda impar y no es la última ronda, ej: estructura atípica) */}
+                                {!isLastRound && pair.length === 1 && (
+                                  <div className="absolute -right-12 top-1/2 w-12 h-[2px] bg-gray-200 transition-colors duration-300 group-hover/pair:bg-primary-300"></div>
                                 )}
                               </div>
-
-                              {/* Información Extra (BYE / Pendiente) */}
-                              {match.status === 'bye' && (
-                                <div className="absolute -bottom-5 right-0 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">BYE</div>
-                              )}
-
-                              {/* CONECTORES (Líneas) - No se muestran en la última ronda */}
-                              {roundIdx < rounds.length - 1 && (
-                                <div 
-                                  className={`absolute top-1/2 -right-12 w-12 h-[2px] bg-gray-200 z-0 transition-colors duration-300 group-hover:bg-primary-300`}
-                                  style={{
-                                    /* El conector vertical se maneja por CSS o se puede aproximar aquí */
-                                  }}
-                                />
-                              )}
-                              {roundIdx > 0 && (
-                                <div className="absolute top-1/2 -left-12 w-12 h-[2px] bg-gray-200 z-0" />
-                              )}
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-
-                        {/* Etiquetas de pie de columna si es necesario */}
-                      </div>
-                    ));
+                      );
+                    });
                   })()}
                   
                   {/* Columna de Campeón (opcional) */}
