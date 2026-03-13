@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import api from '../../services/api'
 import Modal from '../Modal'
 import Toast from '../Toast'
-import { formatDateForInput, formatMatchDate } from '../../utils/helpers'
+import { formatDateForInput, formatMatchDate, getVenueStyle } from '../../utils/helpers'
 
 export default function AdminTournamentDetail() {
   const { id } = useParams()
@@ -105,17 +105,10 @@ export default function AdminTournamentDetail() {
     }
   }
 
-  const getVenueBorderColor = (venueName) => {
-    if (!venueName) return ''
+  const getMatchVenueStyle = (venueName) => {
+    if (!venueName) return getVenueStyle(null)
     const venue = venues.find(v => v.name === venueName)
-    if (!venue) return ''
-    
-    switch (venue.id) {
-      case 1: return 'border-blue-500'
-      case 3: return 'border-green-500'
-      case 4: return 'border-red-500'
-      default: return ''
-    }
+    return getVenueStyle(venue?.id)
   }
 
   const handleSaveCategory = async (e) => {
@@ -1073,7 +1066,7 @@ export default function AdminTournamentDetail() {
           ) : (
             <div className="space-y-4">
               {zoneMatches.map(match => (
-                <div key={match.id} className={`bg-white rounded-lg shadow p-6 border-2 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
+                <div key={match.id} className={`rounded-lg shadow p-6 border-2 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="mb-2">
@@ -1169,7 +1162,7 @@ export default function AdminTournamentDetail() {
           ) : (
             <div className="space-y-4">
               {playoffs.matches?.map(match => (
-                <div key={match.id} className={`bg-white rounded-lg shadow p-6 border-2 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
+                <div key={match.id} className={`rounded-lg shadow p-6 border-2 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="mb-2">

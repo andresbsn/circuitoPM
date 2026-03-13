@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import { formatMatchDate } from '../utils/helpers'
+import { formatMatchDate, getVenueStyle } from '../utils/helpers'
 
 import { useAuth } from '../context/AuthContext'
 
@@ -76,17 +76,10 @@ export default function TournamentView() {
     }
   }
 
-  const getVenueBorderColor = (venueName) => {
-    if (!venueName) return ''
+  const getMatchVenueStyle = (venueName) => {
+    if (!venueName) return getVenueStyle(null)
     const venue = venues.find(v => v.name === venueName)
-    if (!venue) return ''
-    
-    switch (venue.id) {
-      case 1: return 'border-blue-500'
-      case 3: return 'border-green-500'
-      case 4: return 'border-red-500'
-      default: return ''
-    }
+    return getVenueStyle(venue?.id)
   }
 
   const formatScore = (scoreJson) => {
@@ -329,7 +322,7 @@ export default function TournamentView() {
                     </div>
                     <div className="divide-y divide-gray-200">
                       {matches.map(match => (
-                        <div key={match.id} className={`p-6 hover:bg-gray-50 transition-colors border-l-4 ${getVenueBorderColor(match.venue) || 'border-transparent'}`}>
+                        <div key={match.id} className={`p-6 transition-colors border-l-4 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             {/* Fecha y Lugar */}
                             <div className="md:col-span-1 text-sm text-gray-500 space-y-1">
@@ -435,8 +428,8 @@ export default function TournamentView() {
                                   <div key={match.id} className="relative group">
                                     {/* La "caja" del partido */}
                                     <div className={`
-                                      relative z-10 bg-white border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
-                                      ${getVenueBorderColor(match.venue) || (match.status === 'played' ? 'border-primary-100' : 'border-gray-200')}
+                                      relative z-10 border-2 transition-all duration-300 rounded-lg overflow-hidden shadow-sm
+                                      ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}
                                       group-hover:shadow-md group-hover:border-primary-300
                                     `}>
                                       {/* Equipo 1 (Home) */}

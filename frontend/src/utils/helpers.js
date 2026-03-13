@@ -92,3 +92,36 @@ export const isActiveTeam = (team) => {
 export const filterActiveTeams = (teams) => {
   return teams.filter(isActiveTeam)
 }
+
+export const getVenueStyle = (venueId) => {
+  switch (venueId) {
+    case 1: // Las Palmeras (Azul)
+      return { 
+        border: 'border-blue-500', 
+        bg: 'bg-blue-50', 
+        badge: 'bg-blue-100 text-blue-800',
+        text: 'text-blue-900'
+      }
+    case 3: // El Triunfo (Verde)
+      return { 
+        border: 'border-green-500', 
+        bg: 'bg-green-50', 
+        badge: 'bg-green-100 text-green-800',
+        text: 'text-green-900'
+      }
+    case 4: // Padel House (Rojo)
+      return { 
+        border: 'border-red-500', 
+        bg: 'bg-red-50', 
+        badge: 'bg-red-100 text-red-800',
+        text: 'text-red-900'
+      }
+    default: 
+      return { 
+        border: 'border-gray-200', 
+        bg: 'bg-white', 
+        badge: 'bg-gray-100 text-gray-800',
+        text: 'text-gray-900'
+      }
+  }
+}
