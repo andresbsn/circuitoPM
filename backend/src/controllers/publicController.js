@@ -2,6 +2,7 @@ const { Zone, ZoneTeam, ZoneMatch, ZoneStanding, Team, PlayerProfile, Category, 
 const { sendSuccess, sendError, sendValidationError } = require('../utils/responseHelpers');
 const { ERROR_CODES } = require('../utils/constants');
 const { includeMatchTeams, includeZoneMatchTeams } = require('../utils/queryHelpers');
+const { resolveFourTeamStandings } = require('../utils/zoneStandings');
 
 exports.getZones = async (req, res) => {
   try {
@@ -76,6 +77,15 @@ exports.getStandings = async (req, res) => {
         [{ model: ZoneStanding, as: 'standings' }, 'games_diff', 'DESC']
       ]
     });
+
+    for (const zone of zones) {
+      if (zone.standings && zone.standings.length === 4) {
+        const resolvedStandings = await resolveFourTeamStandings(zone.id, zone.standings, null);
+        if (resolvedStandings) {
+          zone.standings = resolvedStandings;
+        }
+      }
+    }
 
     return sendSuccess(res, zones);
   } catch (error) {

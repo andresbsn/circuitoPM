@@ -1,5 +1,6 @@
 const { sequelize, Match, Zone, ZoneStanding, TournamentCategory, Bracket, ZoneMatch } = require('../models');
 const { Op } = require('sequelize');
+const { resolveFourTeamStandings } = require('../utils/zoneStandings');
 
 async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
   try {
@@ -47,7 +48,7 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
     }
 
     // Obtener los standings finales de la zona
-    const standings = await ZoneStanding.findAll({
+    let standings = await ZoneStanding.findAll({
       where: { zone_id: zoneId },
       order: [
         ['points', 'DESC'],
@@ -56,6 +57,13 @@ async function updatePlayoffsAfterZoneResults(zoneId, transaction) {
       ],
       transaction
     });
+
+    if (standings.length === 4) {
+      const resolvedStandings = await resolveFourTeamStandings(zoneId, standings, transaction);
+      if (resolvedStandings) {
+        standings = resolvedStandings;
+      }
+    }
 
     if (standings.length === 0) {
       return;

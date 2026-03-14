@@ -1,4 +1,5 @@
 const { sequelize, Bracket, Match, Zone, ZoneStanding, Team, PlayerProfile, Category, TournamentCategory, Registration } = require('../models');
+const { resolveFourTeamStandings } = require('../utils/zoneStandings');
 
 function nextPowerOfTwo(n) {
   let power = 1;
@@ -149,20 +150,28 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
         transaction
       });
 
-      const groupedByPoints = {};
-      standings.forEach(s => {
-        const key = `${s.points}_${s.sets_diff}_${s.games_diff}`;
-        if (!groupedByPoints[key]) groupedByPoints[key] = [];
-        groupedByPoints[key].push(s);
-      });
+      let resolvedStandings = null;
 
-      const resolvedStandings = [];
-      for (const group of Object.values(groupedByPoints)) {
-        if (group.length === 2) {
-          const resolved = await resolveHeadToHead(group, zone.id, transaction);
-          resolvedStandings.push(...resolved);
-        } else {
-          resolvedStandings.push(...group);
+      if (teamCount === 4) {
+        resolvedStandings = await resolveFourTeamStandings(zone.id, standings, transaction);
+      }
+
+      if (!resolvedStandings) {
+        const groupedByPoints = {};
+        standings.forEach(s => {
+          const key = `${s.points}_${s.sets_diff}_${s.games_diff}`;
+          if (!groupedByPoints[key]) groupedByPoints[key] = [];
+          groupedByPoints[key].push(s);
+        });
+
+        resolvedStandings = [];
+        for (const group of Object.values(groupedByPoints)) {
+          if (group.length === 2) {
+            const resolved = await resolveHeadToHead(group, zone.id, transaction);
+            resolvedStandings.push(...resolved);
+          } else {
+            resolvedStandings.push(...group);
+          }
         }
       }
 
