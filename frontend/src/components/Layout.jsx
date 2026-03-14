@@ -115,41 +115,43 @@ export default function Layout({ children, title, navigationItems = [] }) {
         {/* Mobile Menu (Drawer-like) */}
         {sidebarOpen && (
           <div className="md:hidden absolute top-16 left-0 w-full bg-white/95 backdrop-blur-xl border-b border-gray-200 shadow-xl z-40 transition-all duration-200 animate-fade-in-down">
-            <div className="pt-2 pb-4 space-y-1 px-4">
-              {navigationItems.map((item) => {
-                const isActive = item.current !== undefined ? item.current : location.pathname === item.href;
-                const commonClasses = `block px-4 py-3 rounded-lg text-base font-medium transition-colors ${
-                    isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`;
+            <div className="pt-3 pb-4 px-4">
+              <div className="grid grid-cols-2 gap-2">
+                {navigationItems.map((item) => {
+                  const isActive = item.current !== undefined ? item.current : location.pathname === item.href;
+                  const commonClasses = `block px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`;
 
-                return item.onClick ? (
-                  <button
-                    key={item.name}
-                    onClick={() => {
-                      item.onClick();
-                      setSidebarOpen(false);
-                    }}
-                    className={`${commonClasses} w-full text-left`}
-                  >
-                    {item.name}
-                  </button>
-                ) : (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={commonClasses}
-                  >
-                    {item.name}
-                  </Link>
-                );
-              })}
+                  return item.onClick ? (
+                    <button
+                      key={item.name}
+                      onClick={() => {
+                        item.onClick();
+                        setSidebarOpen(false);
+                      }}
+                      className={`${commonClasses} w-full text-left`}
+                    >
+                      {item.name}
+                    </button>
+                  ) : (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={commonClasses}
+                    >
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </div>
                {/* Mobile Logout/User Info */}
                {user && (
                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex items-center px-4 mb-3">
+                    <div className="flex items-center px-1 mb-3">
                       <div className="flex-shrink-0">
                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center text-primary-700 font-bold border border-primary-100">
                             {user.username?.charAt(0).toUpperCase()}
@@ -165,7 +167,7 @@ export default function Layout({ children, title, navigationItems = [] }) {
                         logout();
                         setSidebarOpen(false);
                       }}
-                      className="block w-full text-left px-4 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 transition-colors"
+                      className="block w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
                     >
                       Cerrar Sesión
                     </button>

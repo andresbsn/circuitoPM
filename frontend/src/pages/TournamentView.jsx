@@ -99,6 +99,10 @@ export default function TournamentView() {
     const sourcePosition = side === 'home' ? match.home_source_position : match.away_source_position
     const sourceZone = side === 'home' ? match.homeSourceZone : match.awaySourceZone
 
+    if (match.status === 'bye' && !sourceZoneId) {
+      return 'BYE'
+    }
+
     if (sourceZoneId && sourcePosition) {
       return `${sourcePosition}° Zona ${sourceZone?.name || '?'}`
     }

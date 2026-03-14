@@ -646,6 +646,10 @@ export default function AdminTournamentDetail() {
     const sourcePosition = side === 'home' ? match.home_source_position : match.away_source_position
     const sourceZone = side === 'home' ? match.homeSourceZone : match.awaySourceZone
 
+    if (match.status === 'bye' && !sourceZoneId) {
+      return 'BYE'
+    }
+
     if (sourceZoneId && sourcePosition) {
       return `${sourcePosition}° Zona ${sourceZone?.name || '?'}`
     }
@@ -737,7 +741,7 @@ export default function AdminTournamentDetail() {
 
       <div className="mb-6">
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex flex-wrap gap-2 md:gap-6 md:flex-nowrap">
             {['categories', 'registrations', 'zones', 'matches', 'playoffs'].map(tab => (
               <button
                 key={tab}
@@ -746,7 +750,7 @@ export default function AdminTournamentDetail() {
                   activeTab === tab
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize`}
+                } whitespace-nowrap py-2 px-2 sm:px-3 border-b-2 font-semibold text-xs sm:text-sm capitalize`}
               >
                 {tab === 'categories' ? 'Categorías' : tab === 'registrations' ? 'Inscripciones' : tab === 'zones' ? 'Zonas' : tab === 'matches' ? 'Partidos' : 'Playoffs'}
               </button>
@@ -1469,7 +1473,7 @@ export default function AdminTournamentDetail() {
         </form>
       </Modal>
 
-      <Modal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} title="Programar Partido">
+      <Modal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} title="Programar Partido" maxWidth="sm:max-w-xl">
         <form onSubmit={handleScheduleMatch} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Fecha y Hora</label>
@@ -1498,18 +1502,18 @@ export default function AdminTournamentDetail() {
               Puede agregar más complejos desde el menú "Complejos"
             </p>
           </div>
-          <div className="flex justify-end space-x-3 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-4 border-t">
             <button
               type="button"
               onClick={() => setShowScheduleModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+              className="w-full sm:w-auto px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
             >
               {loading ? 'Guardando...' : 'Programar'}
             </button>
