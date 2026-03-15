@@ -8,6 +8,18 @@ const { sequelize } = require('../models');
 const { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendConflictError } = require('../utils/responseHelpers');
 const { ERROR_CODES, TOURNAMENT_STATES, TOURNAMENT_CATEGORY_STATES, DEFAULT_VALUES, TEAM_STATES } = require('../utils/constants');
 const { includeTeamWithPlayers, includeTournamentCategory, includeTournamentWithCategories, includeMatchTeams, includeZoneMatchTeams } = require('../utils/queryHelpers');
+const { resolveFourTeamStandings } = require('../utils/zoneStandings');
+
+const getPlayoffMatchFormat = (roundName, defaultFormat) => {
+  if (!roundName) return defaultFormat;
+
+  const normalized = roundName.toLowerCase();
+  if (normalized.includes('octavos') || normalized.includes('cuartos') || normalized.includes('semifinal') || normalized === 'final') {
+    return 'BEST_OF_3_FULL';
+  }
+
+  return defaultFormat;
+};
 
 exports.createCategory = async (req, res) => {
   try {
@@ -907,7 +919,8 @@ exports.updateMatchResult = async (req, res) => {
     }
 
     const tournamentCategory = match.bracket.tournamentCategory;
-    const validation = validateScoreFormat(score_json, tournamentCategory.match_format, tournamentCategory.super_tiebreak_points);
+    const effectiveMatchFormat = getPlayoffMatchFormat(match.round_name, tournamentCategory.match_format);
+    const validation = validateScoreFormat(score_json, effectiveMatchFormat, tournamentCategory.super_tiebreak_points);
 
     if (!validation.valid) {
       return res.status(400).json({
@@ -1165,6 +1178,11 @@ exports.rebuildStandings = async (req, res) => {
 
     await recalculateStandings(zone_id, zone.tournament_category_id);
 
+    const standingsOrder = [
+      ['points', 'DESC'],
+      ['sets_diff', 'DESC']
+    ];
+
     const standings = await ZoneStanding.findAll({
       where: { zone_id },
       include: [
@@ -1177,12 +1195,21 @@ exports.rebuildStandings = async (req, res) => {
           ]
         }
       ],
-      order: [
-        ['points', 'DESC'],
-        ['sets_diff', 'DESC'],
-        ['games_diff', 'DESC']
-      ]
+      order: standingsOrder
     });
+
+    if (standings.length === 4) {
+      const resolvedStandings = await resolveFourTeamStandings(zone_id, standings, null);
+      if (resolvedStandings) {
+        return res.json({ ok: true, data: resolvedStandings });
+      }
+
+      standings.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.sets_diff !== a.sets_diff) return b.sets_diff - a.sets_diff;
+        return 0;
+      });
+    }
 
     return res.json({ ok: true, data: standings });
   } catch (error) {

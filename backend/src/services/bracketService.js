@@ -139,14 +139,19 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       else if (teamCount === 4) qualifiersForThisZone = 3;
 
       // Intentar obtener los equipos clasificados si ya hay resultados
+      const standingsOrder = [
+        ['points', 'DESC'],
+        ['sets_diff', 'DESC']
+      ];
+
+      if (teamCount !== 4) {
+        standingsOrder.push(['games_diff', 'DESC']);
+      }
+
       let standings = await ZoneStanding.findAll({
         where: { zone_id: zone.id },
         include: [{ model: Team, as: 'team' }],
-        order: [
-          ['points', 'DESC'],
-          ['sets_diff', 'DESC'],
-          ['games_diff', 'DESC']
-        ],
+        order: standingsOrder,
         transaction
       });
 
@@ -159,7 +164,9 @@ async function generateBracketFromZones(tournamentCategoryId, force = false) {
       if (!resolvedStandings) {
         const groupedByPoints = {};
         standings.forEach(s => {
-          const key = `${s.points}_${s.sets_diff}_${s.games_diff}`;
+          const key = teamCount === 4
+            ? `${s.points}_${s.sets_diff}`
+            : `${s.points}_${s.sets_diff}_${s.games_diff}`;
           if (!groupedByPoints[key]) groupedByPoints[key] = [];
           groupedByPoints[key].push(s);
         });

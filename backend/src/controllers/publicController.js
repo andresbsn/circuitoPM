@@ -83,6 +83,12 @@ exports.getStandings = async (req, res) => {
         const resolvedStandings = await resolveFourTeamStandings(zone.id, zone.standings, null);
         if (resolvedStandings) {
           zone.standings = resolvedStandings;
+        } else {
+          zone.standings.sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.sets_diff !== a.sets_diff) return b.sets_diff - a.sets_diff;
+            return 0;
+          });
         }
       }
     }

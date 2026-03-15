@@ -608,9 +608,19 @@ export default function AdminTournamentDetail() {
     }
   }
 
+  const getPlayoffMatchFormat = (roundName, defaultFormat) => {
+    if (!roundName) return defaultFormat
+    const normalized = roundName.toLowerCase()
+    if (normalized.includes('octavos') || normalized.includes('cuartos') || normalized.includes('semifinal') || normalized === 'final') {
+      return 'BEST_OF_3_FULL'
+    }
+    return defaultFormat
+  }
+
   const openResultModal = (match, isZone = false) => {
     const currentCategoryObj = tournament?.categories?.find(c => c.id === parseInt(selectedCategory));
-    const format = currentCategoryObj?.match_format || 'BEST_OF_3_SUPER_TB';
+    const baseFormat = currentCategoryObj?.match_format || 'BEST_OF_3_SUPER_TB';
+    const format = isZone ? baseFormat : getPlayoffMatchFormat(match.round_name, baseFormat)
     
     setEditingMatch({ ...match, isZone, format })
     
