@@ -21,9 +21,14 @@ export default function AdminRanking() {
 
   const fetchCategories = async () => {
     try {
-      const response = await api.get('/api/player/categories');
+      const response = await api.get('/api/categories');
       if (response.data.ok) {
         setCategories(response.data.data);
+        if (response.data.data.length > 0) {
+          const defaultCategory = response.data.data[0].id;
+          setSelectedCategory(defaultCategory);
+          fetchRanking(defaultCategory);
+        }
       }
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -38,7 +43,7 @@ export default function AdminRanking() {
 
     setLoading(true);
     try {
-      const response = await api.get(`/api/public/ranking?category_id=${categoryId}`);
+      const response = await api.get(`/api/admin/ranking?category_id=${categoryId}`);
       if (response.data.ok) {
         setRanking(response.data.data);
       }

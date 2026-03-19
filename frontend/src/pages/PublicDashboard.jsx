@@ -251,11 +251,11 @@ export default function PublicDashboard() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold bg-primary-50 text-primary-700">
-                               {player.points} pts
+                               {player.totalPoints} pts
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                               {player.tournaments_played || '-'}
+                               {player.tournamentsPlayed || '-'}
                             </td>
                           </tr>
                         ))}
@@ -284,13 +284,13 @@ export default function PublicDashboard() {
                                    </div>
                                 </div>
                                 <div className="text-right">
-                                   <span className="block text-lg font-bold text-primary-600">{player.points}</span>
+                                   <span className="block text-lg font-bold text-primary-600">{player.totalPoints}</span>
                                    <span className="text-xs text-gray-400">Puntos</span>
                                 </div>
                              </div>
                              <div className="flex justify-between items-center text-xs text-gray-500 mt-2 pl-11">
                                 <span>DNI: {player.dni}</span>
-                                <span>{player.tournaments_played || 0} Torneos</span>
+                                <span>{player.tournamentsPlayed || 0} Torneos</span>
                              </div>
                           </li>
                        ))}

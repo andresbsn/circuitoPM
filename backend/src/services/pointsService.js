@@ -1,4 +1,5 @@
-const { sequelize, TournamentPoints, TournamentCategory, Match, Bracket, Team, PlayerProfile, Zone, ZoneTeam } = require('../models');
+const { Op } = require('sequelize');
+const { sequelize, Tournament, TournamentPoints, TournamentCategory, Match, Bracket, Team, PlayerProfile, Zone, ZoneTeam, Category } = require('../models');
 
 // Tabla de puntos según posición
 const POINTS_TABLE = {
@@ -25,12 +26,25 @@ async function determineTeamPosition(teamId, tournamentCategoryId, transaction) 
     return 'Zona';
   }
 
+  const finalMatch = await Match.findOne({
+    where: {
+      bracket_id: bracket.id,
+      round_name: 'Final',
+      status: 'played'
+    },
+    transaction
+  });
+
+  if (finalMatch && (finalMatch.team_home_id === teamId || finalMatch.team_away_id === teamId)) {
+    return finalMatch.winner_team_id === teamId ? 'Campeón' : 'Subcampeón';
+  }
+
   // Buscar el último partido jugado por este equipo
   const lastMatch = await Match.findOne({
     where: {
       bracket_id: bracket.id,
       status: 'played',
-      [sequelize.Op.or]: [
+      [Op.or]: [
         { team_home_id: teamId },
         { team_away_id: teamId }
       ]
