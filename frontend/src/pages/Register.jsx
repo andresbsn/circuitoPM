@@ -207,7 +207,7 @@ export default function Register() {
               {categories
                 .filter(cat => cat.gender === (formData.genero === 'M' ? 'caballeros' : 'damas'))
                 .map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  <option key={cat.id} value={cat.id}>{cat.name} ({cat.gender})</option>
                 ))
               }
             </select>

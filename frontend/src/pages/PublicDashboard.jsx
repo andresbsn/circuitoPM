@@ -198,7 +198,7 @@ export default function PublicDashboard() {
                     className="block w-full pl-4 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-xl shadow-sm bg-white"
                   >
                     {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      <option key={cat.id} value={cat.id}>{cat.name} ({cat.gender})</option>
                     ))}
                   </select>
                 </div>

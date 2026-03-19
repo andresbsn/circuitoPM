@@ -778,7 +778,7 @@ export default function AdminTournamentDetail() {
             className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
           >
             {tournament.categories?.map(tc => (
-              <option key={tc.id} value={tc.id}>{tc.category.name}</option>
+              <option key={tc.id} value={tc.id}>{tc.category.name} ({tc.category.gender})</option>
             ))}
           </select>
         </div>
