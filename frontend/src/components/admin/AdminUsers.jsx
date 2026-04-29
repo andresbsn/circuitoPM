@@ -12,8 +12,13 @@ export default function AdminUsers() {
     dni: '',
     password: ''
   })
+  const [dniFilter, setDniFilter] = useState('')
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
+
+  const filteredUsers = users.filter((user) => (
+    user.dni?.toString().includes(dniFilter.trim())
+  ))
 
   useEffect(() => {
     fetchUsers()
@@ -112,6 +117,17 @@ export default function AdminUsers() {
         </p>
       </div>
 
+      <div className="bg-white border border-gray-200 rounded-md p-4 mb-6">
+        <label className="block text-sm font-medium text-gray-700">Filtrar por DNI</label>
+        <input
+          type="text"
+          value={dniFilter}
+          onChange={(e) => setDniFilter(e.target.value)}
+          placeholder="Ej: 30000001"
+          className="mt-1 block w-full md:max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+        />
+      </div>
+
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         {/* Desktop View - Table */}
         <div className="hidden md:block">
@@ -128,7 +144,7 @@ export default function AdminUsers() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {users.map(user => (
+              {filteredUsers.map(user => (
                 <tr key={user.dni}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {user.dni}
@@ -179,7 +195,7 @@ export default function AdminUsers() {
         {/* Mobile View - Cards */}
         <div className="md:hidden">
           <ul className="divide-y divide-gray-200">
-            {users.map(user => (
+            {filteredUsers.map(user => (
               <li key={user.dni} className="p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
@@ -224,7 +240,7 @@ export default function AdminUsers() {
           </ul>
         </div>
 
-        {users.length === 0 && (
+        {filteredUsers.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             No hay usuarios registrados
           </div>

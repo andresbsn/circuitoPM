@@ -804,6 +804,7 @@ export default function AdminTournamentDetail() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Género</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cupo</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscriptos</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscripción</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Formato</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
@@ -815,6 +816,9 @@ export default function AdminTournamentDetail() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{tc.category.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{tc.category.gender}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tc.cupo || 'Sin límite'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {(tc.registrations || []).filter(reg => ['inscripto', 'confirmado'].includes(reg.estado)).length}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded ${tc.inscripcion_abierta ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                           {tc.inscripcion_abierta ? 'Abierta' : 'Cerrada'}
@@ -851,6 +855,7 @@ export default function AdminTournamentDetail() {
                     </div>
                     <div className="text-xs text-gray-600 space-y-1">
                       <p>Cupo: {tc.cupo || 'Sin límite'}</p>
+                      <p>Inscriptos: {(tc.registrations || []).filter(reg => ['inscripto', 'confirmado'].includes(reg.estado)).length}</p>
                       <p>Formato: {tc.match_format}</p>
                     </div>
                   </li>

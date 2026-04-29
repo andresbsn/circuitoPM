@@ -17,6 +17,8 @@ export default function AdminPlayers() {
   const [categories, setCategories] = useState([])
   const [localities, setLocalities] = useState([])
   const [saving, setSaving] = useState(false)
+  const [applyPromotion, setApplyPromotion] = useState(false)
+  const [initialCategoryId, setInitialCategoryId] = useState(null)
 
   useEffect(() => {
     fetchPlayers()
@@ -72,6 +74,8 @@ export default function AdminPlayers() {
       if (response.data.ok) {
         setPlayerDetails(response.data.data)
         setFormData({ ...response.data.data.player })
+        setInitialCategoryId(response.data.data.player.categoria_base_id)
+        setApplyPromotion(false)
       }
     } catch (error) {
       console.error('Error fetching player details:', error)
@@ -86,23 +90,54 @@ export default function AdminPlayers() {
   const handleCancelEdit = () => {
     setIsEditing(false)
     setFormData({ ...playerDetails.player })
+    setApplyPromotion(false)
   }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+
+    if (name === 'categoria_base_id') {
+      setApplyPromotion(false)
+    }
+  }
+
+  const isPromotionChange = () => {
+    if (!initialCategoryId || !formData.categoria_base_id) return false
+    const fromCategory = categories.find(cat => cat.id === parseInt(initialCategoryId))
+    const toCategory = categories.find(cat => cat.id === parseInt(formData.categoria_base_id))
+
+    if (!fromCategory || !toCategory) return false
+    return fromCategory.gender === toCategory.gender && toCategory.rank < fromCategory.rank
   }
 
   const handleSavePlayer = async (e) => {
     e.preventDefault()
     setSaving(true)
     try {
-      const response = await api.put(`/api/admin/players/${formData.dni}`, formData)
+      const response = await api.put(`/api/admin/players/${formData.dni}`, {
+        ...formData,
+        apply_promotion: applyPromotion
+      })
       if (response.data.ok) {
-        setToast({ message: 'Jugador actualizado correctamente', type: 'success' })
+        const { player, promotion } = response.data.data
+        
+        let successMessage = 'Jugador actualizado correctamente'
+        if (promotion) {
+          successMessage = `Ascenso aplicado: se transfirieron ${promotion.newPoints} puntos (${promotion.movedPoints} originales)`
+        }
+        
+        setToast({ message: successMessage, type: 'success' })
         setIsEditing(false)
+        
         // Refresh local details
-        setPlayerDetails(prev => ({ ...prev, player: response.data.data }))
+        setPlayerDetails(prev => ({ 
+          ...prev, 
+          player: player 
+        }))
+        
+        setInitialCategoryId(player.categoria_base_id)
+        setApplyPromotion(false)
         // Refresh list
         fetchPlayers()
       }
@@ -298,6 +333,20 @@ export default function AdminPlayers() {
                       ))}
                     </select>
                   </div>
+                  {isPromotionChange() && (
+                    <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs font-semibold text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={applyPromotion}
+                        onChange={(e) => setApplyPromotion(e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400"
+                      />
+                      <span>
+                        Aplicar ascenso: traspasar el 70% de los puntos de la categoría anterior (redondeado).
+                        Esta acción moverá los puntos actuales a la nueva categoría y los eliminará de la anterior.
+                      </span>
+                    </label>
+                  )}
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase">Localidad</label>
                     <select

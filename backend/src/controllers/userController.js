@@ -92,7 +92,7 @@ exports.updateUserPassword = async (req, res) => {
 
     // Hashear nueva contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
+    user.password_hash = hashedPassword;
     await user.save();
 
     return sendSuccess(res, { message: 'Contraseña actualizada' });

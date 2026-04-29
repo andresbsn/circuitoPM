@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { sequelize, Tournament, TournamentPoints, TournamentCategory, Match, Bracket, Team, PlayerProfile, Zone, ZoneTeam, Category } = require('../models');
+const { sequelize, Tournament, TournamentPoints, TournamentCategory, Match, Bracket, Team, PlayerProfile, Zone, ZoneTeam, Category, PlayerCategoryAdjustment } = require('../models');
 
 // Tabla de puntos según posición
 const POINTS_TABLE = {
@@ -209,6 +209,22 @@ async function getPlayerRanking(categoryId = null, limit = 100) {
     ]
   });
 
+  const categoryAdjustments = await PlayerCategoryAdjustment.findAll({
+    where: { category_id: categoryId },
+    include: [
+      {
+        model: PlayerProfile,
+        as: 'player',
+        required: true
+      },
+      {
+        model: Category,
+        as: 'category',
+        required: true
+      }
+    ]
+  });
+
   // Agrupar por jugador y calcular puntos totales en esta categoría
   const playerPointsMap = {};
 
@@ -238,6 +254,25 @@ async function getPlayerRanking(categoryId = null, limit = 100) {
       date: tp.awarded_at,
       isDoublePoints: tp.tournamentCategory.tournament.double_points
     });
+  });
+
+  categoryAdjustments.forEach(adjustment => {
+    const playerDni = adjustment.player_dni;
+
+    if (!playerPointsMap[playerDni]) {
+      playerPointsMap[playerDni] = {
+        dni: adjustment.player.dni,
+        nombre: adjustment.player.nombre,
+        apellido: adjustment.player.apellido,
+        categoria: `${adjustment.category.name} (${adjustment.category.gender})`,
+        categoryId: categoryId,
+        totalPoints: 0,
+        tournamentsPlayed: new Set(),
+        pointsHistory: []
+      };
+    }
+
+    playerPointsMap[playerDni].totalPoints += adjustment.points;
   });
 
   // Convertir a array y calcular tournamentsPlayed
@@ -271,6 +306,13 @@ async function getPlayerPoints(playerDni) {
               { model: Category, as: 'category' }
             ]
           }
+        ]
+      },
+      {
+        model: PlayerCategoryAdjustment,
+        as: 'categoryAdjustments',
+        include: [
+          { model: Category, as: 'category' }
         ]
       },
       {
@@ -314,6 +356,25 @@ async function getPlayerPoints(playerDni) {
     });
   });
 
+  player.categoryAdjustments.forEach(adjustment => {
+    const categoryId = adjustment.category_id;
+    const categoryName = adjustment.category?.name || 'Sin categoría';
+    const categoryGender = adjustment.category?.gender || null;
+
+    if (!pointsByCategory[categoryId]) {
+      pointsByCategory[categoryId] = {
+        categoryId: categoryId,
+        categoryName: categoryName,
+        categoryGender: categoryGender,
+        totalPoints: 0,
+        tournamentsPlayed: new Set(),
+        pointsHistory: []
+      };
+    }
+
+    pointsByCategory[categoryId].totalPoints += adjustment.points;
+  });
+
   // Convertir a array y calcular tournamentsPlayed
   const categoriesData = Object.values(pointsByCategory).map(cat => ({
     categoryId: cat.categoryId,
@@ -341,9 +402,99 @@ async function getPlayerPoints(playerDni) {
   };
 }
 
+async function applyPromotionPoints({ playerDni, fromCategoryId, toCategoryId, transaction }) {
+  const existingAdjustment = await PlayerCategoryAdjustment.findOne({
+    where: {
+      player_dni: playerDni,
+      category_id: toCategoryId,
+      source_category_id: fromCategoryId,
+      reason: 'ascenso'
+    },
+    transaction
+  });
+
+  if (existingAdjustment) {
+    throw new Error('El ascenso ya fue aplicado previamente');
+  }
+
+  // Sumar puntos de torneos en la categoría de origen
+  const tournamentPoints = await TournamentPoints.sum('points', {
+    where: { player_dni: playerDni },
+    include: [
+      {
+        model: TournamentCategory,
+        as: 'tournamentCategory',
+        where: { category_id: fromCategoryId },
+        required: true,
+        attributes: []
+      }
+    ],
+    transaction
+  }) || 0;
+
+  // Sumar ajustes previos en la categoría de origen (para que el ascenso sea acumulativo/en cascada)
+  const adjustmentPoints = await PlayerCategoryAdjustment.sum('points', {
+    where: {
+      player_dni: playerDni,
+      category_id: fromCategoryId
+    },
+    transaction
+  }) || 0;
+
+  const totalPoints = tournamentPoints + adjustmentPoints;
+
+  // Obtener IDs de categorías de torneo de origen para eliminarlas
+  const tournamentCategories = await TournamentCategory.findAll({
+    where: { category_id: fromCategoryId },
+    attributes: ['id'],
+    transaction
+  });
+
+  const tournamentCategoryIds = tournamentCategories.map(category => category.id);
+
+  // Eliminar puntos de la categoría anterior (se "pasan" a la nueva)
+  if (tournamentCategoryIds.length > 0) {
+    await TournamentPoints.destroy({
+      where: {
+        player_dni: playerDni,
+        tournament_category_id: tournamentCategoryIds
+      },
+      transaction
+    });
+  }
+
+  // Eliminar ajustes de la categoría anterior (se "pasan" a la nueva)
+  await PlayerCategoryAdjustment.destroy({
+    where: {
+      player_dni: playerDni,
+      category_id: fromCategoryId
+    },
+    transaction
+  });
+
+  // Calcular el 70%, redondeado
+  const roundedPoints = Math.round(totalPoints * 0.7);
+
+  if (roundedPoints > 0) {
+    await PlayerCategoryAdjustment.create({
+      player_dni: playerDni,
+      category_id: toCategoryId,
+      source_category_id: fromCategoryId,
+      points: roundedPoints,
+      reason: 'ascenso'
+    }, { transaction });
+  }
+
+  return {
+    movedPoints: totalPoints,
+    newPoints: roundedPoints
+  };
+}
+
 module.exports = {
   assignTournamentPoints,
   getPlayerRanking,
   getPlayerPoints,
+  applyPromotionPoints,
   POINTS_TABLE
 };

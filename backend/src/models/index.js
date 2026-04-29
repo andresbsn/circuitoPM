@@ -14,6 +14,7 @@ const Bracket = require('./Bracket');
 const Match = require('./Match');
 const Venue = require('./Venue');
 const TournamentPoints = require('./TournamentPoints');
+const PlayerCategoryAdjustment = require('./PlayerCategoryAdjustment');
 const Locality = require('./Locality');
 
 User.hasOne(PlayerProfile, { foreignKey: 'dni', sourceKey: 'dni', as: 'playerProfile' });
@@ -74,6 +75,12 @@ TournamentPoints.belongsTo(Team, { foreignKey: 'team_id', as: 'team' });
 TournamentCategory.hasMany(TournamentPoints, { foreignKey: 'tournament_category_id', as: 'points' });
 PlayerProfile.hasMany(TournamentPoints, { foreignKey: 'player_dni', sourceKey: 'dni', as: 'tournamentPoints' });
 
+PlayerCategoryAdjustment.belongsTo(PlayerProfile, { foreignKey: 'player_dni', targetKey: 'dni', as: 'player' });
+PlayerCategoryAdjustment.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+PlayerCategoryAdjustment.belongsTo(Category, { foreignKey: 'source_category_id', as: 'sourceCategory' });
+PlayerProfile.hasMany(PlayerCategoryAdjustment, { foreignKey: 'player_dni', sourceKey: 'dni', as: 'categoryAdjustments' });
+Category.hasMany(PlayerCategoryAdjustment, { foreignKey: 'category_id', as: 'categoryAdjustments' });
+
 module.exports = {
   sequelize,
   User,
@@ -91,5 +98,6 @@ module.exports = {
   Match,
   Venue,
   TournamentPoints,
+  PlayerCategoryAdjustment,
   Locality
 };

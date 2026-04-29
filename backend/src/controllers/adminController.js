@@ -1,6 +1,7 @@
 const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProfile, Zone, ZoneTeam, ZoneMatch, ZoneStanding, Bracket, Match, Venue, User, Locality } = require('../models');
 const bcrypt = require('bcryptjs');
 const { generateZones, generateManualZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
+const { applyPromotionPoints } = require('../services/pointsService');
 const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
 const { updatePlayoffsAfterZoneResults } = require('../services/playoffUpdateService');
 const { validateScoreFormat, calculateMatchStats, validateTeamCategoryEligibility } = require('../utils/validation');
@@ -103,7 +104,7 @@ exports.deleteCategory = async (req, res) => {
 
 exports.createTournament = async (req, res) => {
   try {
-    const { nombre, fecha_inicio, fecha_fin, descripcion, estado } = req.body;
+    const { nombre, fecha_inicio, fecha_fin, descripcion, estado, double_points } = req.body;
 
     if (!nombre) {
       return sendValidationError(res, 'El nombre es obligatorio');
@@ -114,7 +115,8 @@ exports.createTournament = async (req, res) => {
       fecha_inicio,
       fecha_fin,
       descripcion,
-      estado: estado || TOURNAMENT_STATES.DRAFT
+      estado: estado || TOURNAMENT_STATES.DRAFT,
+      double_points: double_points ?? false
     });
 
     return sendSuccess(res, tournament, 201);
@@ -131,7 +133,7 @@ exports.createTournament = async (req, res) => {
 exports.updateTournament = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, fecha_inicio, fecha_fin, descripcion, estado } = req.body;
+    const { nombre, fecha_inicio, fecha_fin, descripcion, estado, double_points } = req.body;
 
     const tournament = await Tournament.findByPk(id);
     if (!tournament) {
@@ -143,6 +145,7 @@ exports.updateTournament = async (req, res) => {
     if (fecha_fin !== undefined) tournament.fecha_fin = fecha_fin;
     if (descripcion !== undefined) tournament.descripcion = descripcion;
     if (estado !== undefined) tournament.estado = estado;
+    if (double_points !== undefined) tournament.double_points = double_points;
 
     await tournament.save();
 
@@ -1316,7 +1319,7 @@ exports.getPlayerDetails = async (req, res) => {
 exports.updatePlayer = async (req, res) => {
   try {
     const { dni } = req.params;
-    const { nombre, apellido, telefono, categoria_base_id, genero, locality_id, activo } = req.body;
+    const { nombre, apellido, telefono, categoria_base_id, genero, locality_id, activo, apply_promotion } = req.body;
 
     const player = await PlayerProfile.findByPk(dni);
 
@@ -1324,24 +1327,67 @@ exports.updatePlayer = async (req, res) => {
       return sendNotFoundError(res, 'Jugador no encontrado');
     }
 
-    if (nombre !== undefined) player.nombre = nombre;
-    if (apellido !== undefined) player.apellido = apellido;
-    if (telefono !== undefined) player.telefono = telefono;
-    if (categoria_base_id !== undefined) player.categoria_base_id = categoria_base_id;
-    if (genero !== undefined) player.genero = genero;
-    if (locality_id !== undefined) player.locality_id = locality_id;
-    if (activo !== undefined) player.activo = activo;
+    const previousCategoryId = player.categoria_base_id;
+    const transaction = await sequelize.transaction();
 
-    await player.save();
+    try {
+      if (nombre !== undefined) player.nombre = nombre;
+      if (apellido !== undefined) player.apellido = apellido;
+      if (telefono !== undefined) player.telefono = telefono;
+      if (categoria_base_id !== undefined) player.categoria_base_id = categoria_base_id;
+      if (genero !== undefined) player.genero = genero;
+      if (locality_id !== undefined) player.locality_id = locality_id;
+      if (activo !== undefined) player.activo = activo;
 
-    const updatedPlayer = await PlayerProfile.findByPk(dni, {
-      include: [
-        { model: Category, as: 'categoriaBase' },
-        { model: Locality, as: 'locality' }
-      ]
-    });
+      await player.save({ transaction });
 
-    return sendSuccess(res, updatedPlayer);
+      let promotionResult = null;
+      if (apply_promotion) {
+        if (categoria_base_id === undefined || parseInt(categoria_base_id) === previousCategoryId) {
+          throw new Error('El ascenso solo aplica cuando se cambia la categoría base');
+        }
+
+        const [fromCategory, toCategory] = await Promise.all([
+          Category.findByPk(previousCategoryId, { transaction }),
+          Category.findByPk(categoria_base_id, { transaction })
+        ]);
+
+        if (!fromCategory || !toCategory) {
+          throw new Error('Categoría inválida para ascenso');
+        }
+
+        if (fromCategory.gender !== toCategory.gender || toCategory.rank >= fromCategory.rank) {
+          throw new Error('El ascenso solo aplica al subir de categoría');
+        }
+
+        promotionResult = await applyPromotionPoints({
+          playerDni: dni,
+          fromCategoryId: previousCategoryId,
+          toCategoryId: parseInt(categoria_base_id),
+          transaction
+        });
+      }
+
+      await transaction.commit();
+
+      const updatedPlayer = await PlayerProfile.findByPk(dni, {
+        include: [
+          { model: Category, as: 'categoriaBase' },
+          { model: Locality, as: 'locality' }
+        ]
+      });
+
+      return sendSuccess(res, {
+        player: updatedPlayer,
+        promotion: promotionResult
+      });
+    } catch (error) {
+      await transaction.rollback();
+      if (error.message && (error.message.includes('ascenso') || error.message.includes('Categoría inválida'))) {
+        return sendValidationError(res, error.message);
+      }
+      throw error;
+    }
   } catch (error) {
     console.error('Update player error:', error);
     return sendError(res, {

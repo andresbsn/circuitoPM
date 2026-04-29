@@ -18,4 +18,5 @@ coverage
 .cache
 postgres-data
 .md
-.txt
+*.txt
+*.pdf
