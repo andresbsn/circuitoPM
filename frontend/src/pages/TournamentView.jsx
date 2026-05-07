@@ -128,7 +128,7 @@ export default function TournamentView() {
 
     if (!isTargetZone) return null
 
-    return 'La pareja Caletrio/Lucio juega 21:30hs'
+    return 'La pareja Caletrio/Reynoso juega 21:30hs'
   }
 
   const getZoneMatchTeamLabel = (match, side) => {
