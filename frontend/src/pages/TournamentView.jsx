@@ -121,6 +121,16 @@ export default function TournamentView() {
     return 'TBD'
   }
 
+  const getZoneReferenceText = (zone) => {
+    const tournamentId = Number(id)
+    const tournamentCategoryId = Number(selectedCategory)
+    const isTargetZone = tournamentId === 12 && tournamentCategoryId === 22 && zone?.name === 'A'
+
+    if (!isTargetZone) return null
+
+    return 'La pareja Caletrio/Lucio juega 21:30hs'
+  }
+
   const getZoneMatchTeamLabel = (match, side) => {
     const team = side === 'home' ? match.teamHome : match.teamAway
     if (team?.player1 && team?.player2) {
@@ -210,7 +220,10 @@ export default function TournamentView() {
             {standings.length === 0 ? (
               <p className="text-gray-500">No hay zonas/tabla de posiciones aún</p>
             ) : (
-              standings.map(zone => (
+              standings.map(zone => {
+                const zoneReferenceText = getZoneReferenceText(zone)
+
+                return (
                 <div key={zone.id} className="bg-white rounded-lg shadow overflow-hidden">
                   <div className="px-6 py-4 bg-gray-50 border-b">
                     <h3 className="text-lg font-semibold text-gray-900">{zone.name}</h3>
@@ -301,8 +314,15 @@ export default function TournamentView() {
                       ))}
                     </div>
                   </div>
+
+                  {zoneReferenceText && (
+                    <p className="px-6 py-3 text-sm font-medium text-blue-600 border-t border-gray-100">
+                      {zoneReferenceText}
+                    </p>
+                  )}
                 </div>
-              ))
+                )
+              })
             )}
           </div>
         )}
