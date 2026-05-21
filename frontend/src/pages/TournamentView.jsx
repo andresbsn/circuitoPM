@@ -124,11 +124,10 @@ export default function TournamentView() {
   const getZoneReferenceText = (zone) => {
     const tournamentId = Number(id)
     const tournamentCategoryId = Number(selectedCategory)
-    const isTargetZone = tournamentId === 12 && tournamentCategoryId === 22 && zone?.name === 'A'
+    if (tournamentId === 12 && tournamentCategoryId === 22 && zone?.name === 'A') return 'La pareja Caletrio/Reynoso juega 21:30hs'
+    if (tournamentId === 13 && tournamentCategoryId === 29 && zone?.name === 'A') return 'La pareja Zanazzi/Arelo juega 18hs'
 
-    if (!isTargetZone) return null
-
-    return 'La pareja Caletrio/Reynoso juega 21:30hs'
+    return null
   }
 
   const getZoneMatchTeamLabel = (match, side) => {
