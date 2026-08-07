@@ -126,6 +126,7 @@ export default function TournamentView() {
     const tournamentCategoryId = Number(selectedCategory)
     if (tournamentId === 12 && tournamentCategoryId === 22 && zone?.name === 'A') return 'La pareja Caletrio/Reynoso juega 21:30hs'
     if (tournamentId === 13 && tournamentCategoryId === 29 && zone?.name === 'A') return 'La pareja Zanazzi/Arelo juega 18hs'
+    if (tournamentId === 15 && tournamentCategoryId === 39 && zone?.name === 'A') return 'La pareja Ruiz Moreno/Clark juega 21hs'
 
     return null
   }
