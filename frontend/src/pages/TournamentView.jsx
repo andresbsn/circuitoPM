@@ -130,7 +130,7 @@ export default function TournamentView() {
     if (tournamentId === 15 && tournamentCategoryId === 39 && zoneName === 'A') return 'La pareja Ruiz Moreno/Clark juega 21hs'
     if (tournamentId === 17 && tournamentCategoryId === 55 && zoneName === 'B') return 'La pareja Torrent/Gaeto juegan 17hs'
     if (tournamentId === 17 && tournamentCategoryId === 56 && zoneName === 'A') return 'La pareja Boetti/Melaragna juegan 20hs'
-
+    if (tournamentId === 18 && tournamentCategoryId === 63 && zoneName === 'B') return 'La pareja Torrent/Gaeto juegan 20hs'
 
     return null
   }
@@ -349,8 +349,11 @@ export default function TournamentView() {
                       <h3 className="text-md font-bold text-gray-800">Zona {zoneName}</h3>
                     </div>
                     <div className="divide-y divide-gray-200">
-                      {matches.map(match => (
-                        <div key={match.id} className={`p-6 transition-colors border-l-4 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
+                      {matches.map(match => {
+                        const zoneReferenceText = getZoneReferenceText(match.zone)
+
+                        return (
+                          <div key={match.id} className={`p-6 transition-colors border-l-4 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                             {/* Fecha y Lugar */}
                             <div className="md:col-span-1 text-sm text-gray-500 space-y-1">
@@ -393,8 +396,14 @@ export default function TournamentView() {
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                          {zoneReferenceText && (
+                            <p className="mt-4 pt-3 text-sm font-medium text-blue-600 border-t border-gray-200">
+                              {zoneReferenceText}
+                            </p>
+                          )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 ))
