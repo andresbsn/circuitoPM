@@ -350,7 +350,8 @@ export default function TournamentView() {
                     </div>
                     <div className="divide-y divide-gray-200">
                       {matches.map(match => {
-                        const zoneReferenceText = getZoneReferenceText(match.zone)
+                        const isWinnerMatch = Number(match.round_number) === 2 && Number(match.match_number) === 3
+                        const zoneReferenceText = isWinnerMatch ? getZoneReferenceText(match.zone) : null
 
                         return (
                           <div key={match.id} className={`p-6 transition-colors border-l-4 ${getMatchVenueStyle(match.venue).border} ${getMatchVenueStyle(match.venue).bg}`}>
