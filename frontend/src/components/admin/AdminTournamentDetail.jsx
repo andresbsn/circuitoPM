@@ -169,14 +169,14 @@ export default function AdminTournamentDetail() {
 
   // Initialize manual matches when totalSlots changes
   useEffect(() => {
-    if (playoffMode === 'manual') {
+    if (playoffMode === 'manual' || playoffMode === 'direct') {
       const numMatches = manualPlayoffConfig.totalSlots / 2
       const initialMatches = []
       for (let i = 0; i < numMatches; i++) {
         initialMatches.push({
           match_number: i + 1,
-          home: { zone_id: '', position: 1 },
-          away: { zone_id: '', position: 2 }
+          home: playoffMode === 'direct' ? { team_id: '' } : { zone_id: '', position: 1 },
+          away: playoffMode === 'direct' ? { team_id: '' } : { zone_id: '', position: 2 }
         })
       }
       setManualPlayoffConfig(prev => ({ ...prev, matches: initialMatches }))
@@ -184,6 +184,39 @@ export default function AdminTournamentDetail() {
   }, [manualPlayoffConfig.totalSlots, playoffMode])
 
   const handleManualPlayoffSubmit = async () => {
+    if (playoffMode === 'direct') {
+      const matchesToSend = manualPlayoffConfig.matches.map(m => ({
+        match_number: m.match_number,
+        home_team_id: Number(m.home.team_id),
+        away_team_id: Number(m.away.team_id)
+      }))
+
+      const selectedTeamIds = matchesToSend.flatMap(m => [m.home_team_id, m.away_team_id])
+      if (selectedTeamIds.some(teamId => !teamId) || new Set(selectedTeamIds).size !== selectedTeamIds.length) {
+        setToast({ message: 'Debe seleccionar 2 parejas distintas en cada cruce, sin repetirlas', type: 'error' })
+        return
+      }
+
+      setLoading(true)
+      try {
+        const response = await api.post('/api/admin/playoffs/generate-direct', {
+          tournament_category_id: selectedCategory,
+          total_slots: manualPlayoffConfig.totalSlots,
+          matches: matchesToSend
+        })
+        if (response.data.ok) {
+          setToast({ message: 'Cuadro directo generado exitosamente', type: 'success' })
+          setShowPlayoffModal(false)
+          fetchCategoryData()
+        }
+      } catch (error) {
+        setToast({ message: error.response?.data?.error?.message || 'Error', type: 'error' })
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     const matchesToSend = manualPlayoffConfig.matches.map(m => {
       const newM = { match_number: m.match_number }
       if (m.home.zone_id) newM.home = m.home
@@ -347,6 +380,7 @@ export default function AdminTournamentDetail() {
           : 0
         const suggestedSlots = confirmedCount > 13 ? 16 : 8
         setManualPlayoffConfig(prev => ({ ...prev, totalSlots: suggestedSlots }))
+        setRegistrations(response.data.data.filter(r => ['inscripto', 'confirmado'].includes(r.estado)))
       }
 
       const zonesResponse = await api.get(`/api/tournament-categories/zones?tournament_category_id=${selectedCategory}`)
@@ -1663,7 +1697,13 @@ export default function AdminTournamentDetail() {
               className={`py-2 px-4 ${playoffMode === 'manual' ? 'border-b-2 border-primary-500 text-primary-600 font-medium' : 'text-gray-500'}`}
               onClick={() => setPlayoffMode('manual')}
             >
-              Manual
+              Manual por zonas
+            </button>
+            <button
+              className={`py-2 px-4 ${playoffMode === 'direct' ? 'border-b-2 border-primary-500 text-primary-600 font-medium' : 'text-gray-500'}`}
+              onClick={() => setPlayoffMode('direct')}
+            >
+              Cuadro directo
             </button>
           </div>
 
@@ -1695,6 +1735,69 @@ export default function AdminTournamentDetail() {
                   className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
                 >
                   Confirmar Generación Automática
+                </button>
+              </div>
+            </div>
+          ) : playoffMode === 'direct' ? (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+              <p className="text-sm text-gray-600">
+                Seleccione la instancia inicial y cargue manualmente cada cruce. No se utilizarán zonas.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Instancia inicial</label>
+                <select
+                  value={manualPlayoffConfig.totalSlots}
+                  onChange={(e) => setManualPlayoffConfig({ ...manualPlayoffConfig, totalSlots: parseInt(e.target.value) })}
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 rounded-md"
+                >
+                  <option value="4">Semifinales (4 parejas)</option>
+                  <option value="8">Cuartos de Final (8 parejas)</option>
+                  <option value="16">Octavos de Final (16 parejas)</option>
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-900">Cruces iniciales</h4>
+                {manualPlayoffConfig.matches.map((match, idx) => (
+                  <div key={idx} className="bg-gray-50 p-3 rounded-md border border-gray-200">
+                    <p className="text-sm font-bold text-gray-700 mb-2">Partido {match.match_number}</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      {['home', 'away'].map(side => (
+                        <div key={side}>
+                          <span className="block text-xs font-semibold text-gray-500 uppercase">
+                            {side === 'home' ? 'Local' : 'Visitante'}
+                          </span>
+                          <select
+                            className="mt-1 text-sm border-gray-300 rounded-md w-full"
+                            value={match[side].team_id}
+                            onChange={(e) => {
+                              const newMatches = [...manualPlayoffConfig.matches]
+                              newMatches[idx][side].team_id = e.target.value
+                              setManualPlayoffConfig({ ...manualPlayoffConfig, matches: newMatches })
+                            }}
+                          >
+                            <option value="">Seleccione una pareja</option>
+                            {registrations.map(registration => (
+                              <option key={registration.team_id} value={registration.team_id}>
+                                {registration.team?.player1?.nombre} {registration.team?.player1?.apellido} / {registration.team?.player2?.nombre} {registration.team?.player2?.apellido}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={handleManualPlayoffSubmit}
+                  disabled={loading}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+                >
+                  Generar Cuadro Directo
                 </button>
               </div>
             </div>

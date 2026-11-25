@@ -2,7 +2,7 @@ const { Category, Tournament, TournamentCategory, Registration, Team, PlayerProf
 const bcrypt = require('bcryptjs');
 const { generateZones, generateManualZones, recalculateStandings, updateDependentMatches } = require('../services/zoneService');
 const { applyPromotionPoints } = require('../services/pointsService');
-const { generateBracketFromZones, advanceWinnerToNextMatch } = require('../services/bracketService');
+const { generateBracketFromZones, generateDirectBracketManual, advanceWinnerToNextMatch } = require('../services/bracketService');
 const { updatePlayoffsAfterZoneResults } = require('../services/playoffUpdateService');
 const { validateScoreFormat, calculateMatchStats, validateTeamCategoryEligibility } = require('../utils/validation');
 const { sequelize } = require('../models');
@@ -886,6 +886,42 @@ exports.generatePlayoffsManual = async (req, res) => {
 
   } catch (error) {
     console.error('Manual playoffs error:', error);
+    return sendError(res, {
+      code: ERROR_CODES.SERVER_ERROR,
+      message: error.message,
+      details: error.message
+    });
+  }
+};
+
+exports.generateDirectPlayoffsManual = async (req, res) => {
+  try {
+    const { tournament_category_id, total_slots, matches, force } = req.body;
+
+    if (!tournament_category_id || !total_slots || !Array.isArray(matches)) {
+      return sendValidationError(res, 'Faltan datos requeridos');
+    }
+
+    const { bracket, isNew } = await generateDirectBracketManual(
+      tournament_category_id,
+      matches,
+      Number(total_slots),
+      force || false
+    );
+
+    const result = await Bracket.findByPk(bracket.id, {
+      include: [
+        { model: Match, as: 'matches', include: includeMatchTeams() }
+      ],
+      order: [
+        [{ model: Match, as: 'matches' }, 'round_number', 'ASC'],
+        [{ model: Match, as: 'matches' }, 'match_number', 'ASC']
+      ]
+    });
+
+    return sendSuccess(res, { bracket: result, isNew }, isNew ? 201 : 200);
+  } catch (error) {
+    console.error('Generate direct playoffs error:', error);
     return sendError(res, {
       code: ERROR_CODES.SERVER_ERROR,
       message: error.message,

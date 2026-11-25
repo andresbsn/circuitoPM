@@ -754,8 +754,145 @@ async function generateBracketManual(tournamentCategoryId, seededTeams, force = 
   }
 }
 
+async function generateDirectBracketManual(tournamentCategoryId, matches, totalSlots, force = false) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const tournamentCategory = await TournamentCategory.findByPk(tournamentCategoryId, { transaction });
+    if (!tournamentCategory) {
+      throw new Error('Categoría de torneo no encontrada');
+    }
+
+    if (![4, 8, 16].includes(Number(totalSlots))) {
+      throw new Error('La instancia inicial debe tener 4, 8 o 16 equipos');
+    }
+
+    const expectedMatches = Number(totalSlots) / 2;
+    if (!Array.isArray(matches) || matches.length !== expectedMatches) {
+      throw new Error(`Se requieren ${expectedMatches} cruces para esta instancia`);
+    }
+
+    const orderedMatches = [...matches].sort((a, b) => Number(a.match_number) - Number(b.match_number));
+    if (orderedMatches.some((match, index) => Number(match.match_number) !== index + 1)) {
+      throw new Error('Los cruces deben estar numerados consecutivamente');
+    }
+
+    const teamIds = orderedMatches.flatMap(match => [match.home_team_id, match.away_team_id]);
+    if (teamIds.some(teamId => !Number.isInteger(Number(teamId))) || new Set(teamIds.map(Number)).size !== teamIds.length) {
+      throw new Error('Cada pareja debe estar cargada una sola vez en el cuadro');
+    }
+
+    const registrations = await Registration.findAll({
+      where: {
+        tournament_category_id: tournamentCategoryId,
+        team_id: teamIds,
+        estado: ['inscripto', 'confirmado']
+      },
+      transaction
+    });
+
+    if (registrations.length !== teamIds.length) {
+      throw new Error('Todas las parejas deben estar inscriptas en la categoría');
+    }
+
+    const existingBracket = await Bracket.findOne({
+      where: { tournament_category_id: tournamentCategoryId },
+      transaction
+    });
+
+    if (existingBracket && !force) {
+      throw new Error('Ya existe un bracket. Use force=true para regenerar.');
+    }
+
+    if (existingBracket) {
+      await Match.destroy({ where: { bracket_id: existingBracket.id }, transaction });
+      await existingBracket.destroy({ transaction });
+    }
+
+    const bracket = await Bracket.create({
+      tournament_category_id: tournamentCategoryId,
+      status: 'published',
+      generado_at: new Date()
+    }, { transaction });
+
+    const totalRounds = Math.log2(Number(totalSlots));
+    const allMatches = [];
+    let matchIdCounter = -1000;
+
+    for (let round = 1; round <= totalRounds; round++) {
+      const matchesInRound = Math.pow(2, totalRounds - round);
+      const roundName = getRoundName(totalRounds, round);
+
+      for (let i = 0; i < matchesInRound; i++) {
+        const match = {
+          id: matchIdCounter++,
+          bracket_id: bracket.id,
+          round_number: round,
+          round_name: roundName,
+          match_number: i + 1,
+          team_home_id: null,
+          team_away_id: null,
+          status: 'pending',
+          next_match_id: null,
+          next_match_slot: null
+        };
+
+        if (round === 1) {
+          const configuredMatch = orderedMatches[i];
+          match.team_home_id = Number(configuredMatch.home_team_id);
+          match.team_away_id = Number(configuredMatch.away_team_id);
+        }
+
+        allMatches.push(match);
+      }
+    }
+
+    for (let round = 1; round < totalRounds; round++) {
+      const currentStart = allMatches.findIndex(match => match.round_number === round);
+      const nextStart = allMatches.findIndex(match => match.round_number === round + 1);
+      const matchesInCurrentRound = Math.pow(2, totalRounds - round);
+
+      for (let i = 0; i < matchesInCurrentRound; i++) {
+        const currentMatch = allMatches[currentStart + i];
+        const nextMatch = allMatches[nextStart + Math.floor(i / 2)];
+        currentMatch.next_match_id = nextMatch.id;
+        currentMatch.next_match_slot = i % 2 === 0 ? 'home' : 'away';
+      }
+    }
+
+    const tempIdToDbIdMap = new Map();
+    const matchesToUpdate = [];
+
+    for (const matchData of allMatches) {
+      const { id: tempId, next_match_id: nextMatchTempId, ...dataToInsert } = matchData;
+      const created = await Match.create(dataToInsert, { transaction });
+      tempIdToDbIdMap.set(tempId, created.id);
+      matchesToUpdate.push({ realId: created.id, nextMatchTempId });
+    }
+
+    for (const { realId, nextMatchTempId } of matchesToUpdate) {
+      await Match.update(
+        { next_match_id: tempIdToDbIdMap.get(nextMatchTempId) || null },
+        { where: { id: realId }, transaction }
+      );
+    }
+
+    await TournamentCategory.update(
+      { estado: 'playoffs_generados' },
+      { where: { id: tournamentCategoryId }, transaction }
+    );
+
+    await transaction.commit();
+    return { bracket, isNew: true };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
 module.exports = {
   generateBracketFromZones,
   generateBracketManual,
+  generateDirectBracketManual,
   advanceWinnerToNextMatch
 };
